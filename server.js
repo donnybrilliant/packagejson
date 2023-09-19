@@ -1,11 +1,13 @@
 import express from "express";
 import { ENV } from "./config.js";
-import { getRepositories, getPackageDetails } from "./api.js";
+import { getRepositories } from "./api.js";
+import { getCachedData, isCacheValid, invalidateCache } from "./cache.js";
+import { fetchAggregatedData } from "./dataFetcher.js";
 
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("package.json");
+  res.send(`<a href="/package.json">package.json</a>`);
 });
 
 app.get("/repos", async (req, res) => {
@@ -19,27 +21,22 @@ app.get("/repos", async (req, res) => {
 
 app.get("/package.json", async (req, res) => {
   try {
-    const repos = await getRepositories();
-    const aggregatedData = {
-      dependencies: {},
-      devDependencies: {},
-    };
-
-    for (const repo of repos) {
-      const packageDetails = await getPackageDetails(repo.name);
-      if (packageDetails) {
-        aggregatedData.dependencies = {
-          ...aggregatedData.dependencies,
-          ...packageDetails.dependencies,
-        };
-        aggregatedData.devDependencies = {
-          ...aggregatedData.devDependencies,
-          ...packageDetails.devDependencies,
-        };
-      }
+    if (isCacheValid()) {
+      return res.json(getCachedData());
     }
 
-    res.json(aggregatedData);
+    const data = await fetchAggregatedData();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/package.json/refresh", async (req, res) => {
+  try {
+    invalidateCache();
+    const data = await fetchAggregatedData();
+    res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
