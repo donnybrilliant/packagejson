@@ -1,28 +1,29 @@
-let cacheStore = {};
+import NodeCache from "node-cache";
 
-export function getCachedData(key) {
-  return cacheStore[key]?.data;
+function createCacheManager(ttlSeconds) {
+  const cache = new NodeCache({
+    stdTTL: ttlSeconds,
+    checkperiod: ttlSeconds * 0.2,
+  });
+
+  return {
+    get(key) {
+      return cache.get(key);
+    },
+    set(key, value) {
+      return cache.set(key, value);
+    },
+    del(key) {
+      return cache.del(key);
+    },
+    flush() {
+      return cache.flushAll();
+    },
+  };
 }
 
-export function setCachedData(key, data) {
-  if (cacheStore[key]) {
-    cacheStore[key].data = data;
-    cacheStore[key].lastFetchTimestamp = Date.now();
-  } else {
-    cacheStore[key] = { data, lastFetchTimestamp: Date.now() };
-  }
-}
+const oneWeekInSeconds = 7 * 24 * 60 * 60;
+const oneMonthInSeconds = 4 * oneWeekInSeconds;
 
-export function isCacheValid(key, cacheTime) {
-  return (
-    cacheStore[key] &&
-    Date.now() - cacheStore[key].lastFetchTimestamp < cacheTime
-  );
-}
-
-export function invalidateCache(key) {
-  if (cacheStore[key]) {
-    cacheStore[key].data = null;
-    cacheStore[key].lastFetchTimestamp = null;
-  }
-}
+export const packageJsonCache = createCacheManager(oneWeekInSeconds);
+export const filesCache = createCacheManager(oneMonthInSeconds);
