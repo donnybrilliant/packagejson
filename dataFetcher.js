@@ -2,7 +2,7 @@ import { getRepositories, getPackageDetails } from "./api.js";
 import { setCachedData } from "./cache.js";
 
 export async function fetchAggregatedData() {
-  const repos = await getRepositories();
+  const repos = await getRepositories("all");
   const aggregatedData = {
     dependencies: {},
     devDependencies: {},

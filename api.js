@@ -11,8 +11,8 @@ export async function fetchGitHubAPI(endpoint) {
   return response.json();
 }
 
-export async function getRepositories() {
-  return fetchGitHubAPI(`/user/repos?type=all&per_page=100`);
+export async function getRepositories(type = "public") {
+  return fetchGitHubAPI(`/user/repos?type=${type}&per_page=100`);
 }
 
 export async function fetchFileContent(repoName, filePath) {
@@ -23,10 +23,11 @@ export async function fetchFileContent(repoName, filePath) {
     if (data && data.content) {
       return Buffer.from(data.content, "base64").toString("utf-8");
     }
-  } catch {
-    // Handle errors (e.g., file not found)
+    return null;
+  } catch (error) {
+    console.error(error);
+    return null;
   }
-  return null;
 }
 
 export async function getPackageDetails(repoName) {
@@ -39,4 +40,29 @@ export async function getPackageDetails(repoName) {
     };
   }
   return null;
+}
+
+export async function fetchFolderStructure(repoName, path = "") {
+  try {
+    const data = await fetchGitHubAPI(
+      `/repos/${ENV.USERNAME}/${repoName}/contents/${path}`
+    );
+    if (Array.isArray(data)) {
+      const structure = {};
+      for (const item of data) {
+        if (item.type === "dir") {
+          structure[item.name] = await fetchFolderStructure(
+            repoName,
+            item.path
+          );
+        } else if (item.type === "file") {
+          structure[item.name] = await fetchFileContent(repoName, item.path);
+        }
+      }
+      return structure;
+    }
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
 }
