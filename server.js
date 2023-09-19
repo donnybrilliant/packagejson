@@ -1,4 +1,9 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
+import morgan from "morgan";
+import { fileURLToPath } from "url";
+
 import { ENV } from "./config.js";
 import { getRepositories, fetchFolderStructure } from "./api.js";
 import {
@@ -13,6 +18,20 @@ const ONE_WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
 const ONE_MONTH_IN_MS = 30 * 24 * 60 * 60 * 1000;
 
 const app = express();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Create a write stream (in append mode)
+const accessLogStream = fs.createWriteStream(
+  path.join(__dirname, "access.log"),
+  { flags: "a" }
+);
+
+// Setup the morgan middleware to use the write stream
+app.use(morgan("combined", { stream: accessLogStream }));
+
+// ... (the rest of your code)
 
 app.get("/", (req, res) => {
   res.send(`<a href="/package.json">package.json</a><br>

@@ -1,6 +1,15 @@
 import fetch from "node-fetch";
 import { ENV } from "./config.js";
 
+import winston from "winston";
+
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.json(),
+  defaultMeta: { service: "user-service" },
+  transports: [new winston.transports.File({ filename: "api_calls.log" })],
+});
+
 export async function fetchGitHubAPI(endpoint) {
   const response = await fetch(`${ENV.GITHUB_API_URL}${endpoint}`, {
     headers: {
@@ -8,26 +17,16 @@ export async function fetchGitHubAPI(endpoint) {
       Accept: "application/vnd.github.v3+json",
     },
   });
+  // Logging the API call
+  logger.info(`API CALL: ${ENV.GITHUB_API_URL}${endpoint}`, {
+    timestamp: new Date().toISOString(),
+  });
+
   return response.json();
 }
 
 export async function getRepositories(type = "public") {
   return fetchGitHubAPI(`/user/repos?type=${type}&per_page=100`);
-}
-
-export async function fetchFileContent(repoName, filePath) {
-  try {
-    const data = await fetchGitHubAPI(
-      `/repos/${ENV.USERNAME}/${repoName}/contents/${filePath}`
-    );
-    if (data && data.content) {
-      return Buffer.from(data.content, "base64").toString("utf-8");
-    }
-    return null;
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
 }
 
 export async function getPackageDetails(repoName) {
@@ -61,6 +60,21 @@ export async function fetchFolderStructure(repoName, path = "") {
       }
       return structure;
     }
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
+export async function fetchFileContent(repoName, filePath) {
+  try {
+    const data = await fetchGitHubAPI(
+      `/repos/${ENV.USERNAME}/${repoName}/contents/${filePath}`
+    );
+    if (data && data.content) {
+      return Buffer.from(data.content, "base64").toString("utf-8");
+    }
+    return null;
   } catch (error) {
     console.error(error);
     return null;
