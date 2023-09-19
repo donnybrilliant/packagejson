@@ -1,8 +1,12 @@
 import fetch from "node-fetch";
+import express from "express";
+import { config } from "dotenv";
 
-const GITHUB_API_URL = "https://api.github.com";
-const GITHUB_TOKEN = "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";
-const USERNAME = "donnybrilliant";
+config();
+
+const GITHUB_API_URL = process.env.GITHUB_API_URL;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const USERNAME = process.env.USERNAME;
 
 async function fetchGitHubAPI(endpoint) {
   const response = await fetch(`${GITHUB_API_URL}${endpoint}`, {
@@ -32,19 +36,6 @@ async function fetchFileContent(repoName, filePath) {
   return null;
 }
 
-async function getPackageDetails(repoName) {
-  const packageJsonContent = await fetchFileContent(repoName, "package.json");
-  if (packageJsonContent) {
-    const packageJson = JSON.parse(packageJsonContent);
-    return {
-      dependencies: packageJson.dependencies,
-      devDependencies: packageJson.devDependencies,
-      buildTool: identifyBuildTool(packageJson),
-    };
-  }
-  return null;
-}
-
 function identifyBuildTool(packageJson) {
   if (packageJson.dependencies && packageJson.dependencies["react-scripts"]) {
     return "create-react-app";
@@ -58,21 +49,43 @@ function identifyBuildTool(packageJson) {
   return "unknown";
 }
 
-async function main() {
-  const repos = await getRepositories();
-  const aggregatedData = [];
-
-  for (const repo of repos) {
-    const packageDetails = await getPackageDetails(repo.name);
-    if (packageDetails) {
-      aggregatedData.push({
-        repo: repo.name,
-        ...packageDetails,
-      });
-    }
+async function getPackageDetails(repoName) {
+  const packageJsonContent = await fetchFileContent(repoName, "package.json");
+  if (packageJsonContent) {
+    const packageJson = JSON.parse(packageJsonContent);
+    return {
+      dependencies: packageJson.dependencies,
+      devDependencies: packageJson.devDependencies,
+      buildTool: identifyBuildTool(packageJson),
+    };
   }
-
-  console.log(JSON.stringify(aggregatedData, null, 2));
+  return null;
 }
 
-main();
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/getPackageDetails", async (req, res) => {
+  try {
+    const repos = await getRepositories();
+    const aggregatedData = [];
+
+    for (const repo of repos) {
+      const packageDetails = await getPackageDetails(repo.name);
+      if (packageDetails) {
+        aggregatedData.push({
+          repo: repo.name,
+          ...packageDetails,
+        });
+      }
+    }
+
+    res.json(aggregatedData);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
