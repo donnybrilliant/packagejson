@@ -1,26 +1,28 @@
-let cachedData = null;
-let lastFetchTimestamp = null;
+let cacheStore = {};
 
-const ONE_WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
-
-export function getCachedData() {
-  return cachedData;
+export function getCachedData(key) {
+  return cacheStore[key]?.data;
 }
 
-export function setCachedData(data) {
-  cachedData = data;
-  lastFetchTimestamp = Date.now();
+export function setCachedData(key, data) {
+  if (cacheStore[key]) {
+    cacheStore[key].data = data;
+    cacheStore[key].lastFetchTimestamp = Date.now();
+  } else {
+    cacheStore[key] = { data, lastFetchTimestamp: Date.now() };
+  }
 }
 
-export function isCacheValid() {
+export function isCacheValid(key, cacheTime) {
   return (
-    cachedData !== null &&
-    lastFetchTimestamp !== null &&
-    Date.now() - lastFetchTimestamp < ONE_WEEK_IN_MS
+    cacheStore[key] &&
+    Date.now() - cacheStore[key].lastFetchTimestamp < cacheTime
   );
 }
 
-export function invalidateCache() {
-  cachedData = null;
-  lastFetchTimestamp = null;
+export function invalidateCache(key) {
+  if (cacheStore[key]) {
+    cacheStore[key].data = null;
+    cacheStore[key].lastFetchTimestamp = null;
+  }
 }
