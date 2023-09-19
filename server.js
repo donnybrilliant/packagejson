@@ -15,6 +15,7 @@ async function fetchGitHubAPI(endpoint) {
       Accept: "application/vnd.github.v3+json",
     },
   });
+  console.log(response);
   return response.json();
 }
 
