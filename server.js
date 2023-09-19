@@ -23,15 +23,6 @@ app.get("/repos", async (req, res) => {
   }
 });
 
-app.get("/test", async (req, res) => {
-  try {
-    const repos = await getRepositories();
-    res.json(repos);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.get("/package.json", async (req, res) => {
   try {
     if (isCacheValid()) {
