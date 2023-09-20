@@ -1,4 +1,5 @@
 import NodeCache from "node-cache";
+import { CACHE_SETTINGS } from "../../config/index.js";
 
 function createCacheManager(ttlSeconds) {
   const cache = new NodeCache({
@@ -22,8 +23,5 @@ function createCacheManager(ttlSeconds) {
   };
 }
 
-const oneWeekInSeconds = 7 * 24 * 60 * 60;
-const oneMonthInSeconds = 4 * oneWeekInSeconds;
-
-export const packageJsonCache = createCacheManager(oneWeekInSeconds);
-export const filesCache = createCacheManager(oneMonthInSeconds);
+export const packageJsonCache = createCacheManager(CACHE_SETTINGS.ONE_WEEK);
+export const filesCache = createCacheManager(CACHE_SETTINGS.ONE_MONTH);

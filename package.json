@@ -2,11 +2,11 @@
   "name": "packagejson",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "main": "./src/index.js",
   "type": "module",
   "scripts": {
-    "dev": "node --watch server.js",
-    "start": "node server.js"
+    "dev": "node --watch ./src/index.js",
+    "start": "node ./src/index.js"
   },
   "keywords": [],
   "author": "",

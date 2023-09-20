@@ -1,14 +1,6 @@
 import fetch from "node-fetch";
-import { ENV } from "./config.js";
-
-import winston from "winston";
-
-const logger = winston.createLogger({
-  level: "info",
-  format: winston.format.json(),
-  defaultMeta: { service: "user-service" },
-  transports: [new winston.transports.File({ filename: "api_calls.log" })],
-});
+import { ENV } from "../../config/index.js";
+import { logger } from "../middleware/logger.js";
 
 export async function fetchGitHubAPI(endpoint) {
   const response = await fetch(`${ENV.GITHUB_API_URL}${endpoint}`, {
@@ -17,11 +9,9 @@ export async function fetchGitHubAPI(endpoint) {
       Accept: "application/vnd.github.v3+json",
     },
   });
-  // Logging the API call
-  logger.info(`API CALL: ${ENV.GITHUB_API_URL}${endpoint}`, {
-    timestamp: new Date().toISOString(),
-  });
-
+  logger.info(
+    `API call to ${ENV.GITHUB_API_URL}${endpoint} with status ${response.status} ${response.statusText}`
+  );
   return response.json();
 }
 
