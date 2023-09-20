@@ -1,5 +1,6 @@
 import { filesCache } from "../utils/cache.js";
 import { getRepositories, fetchFolderStructure } from "../services/api.js";
+import { logger } from "../middleware/logger.js";
 import fs from "fs";
 import { USE_LOCAL_DATA } from "../../config/index.js";
 import path from "path";
@@ -18,53 +19,60 @@ function getLocalData() {
 }
 
 async function fetchData() {
-  if (filesCache.get("files")) {
-    console.log("fetching data from cache");
-    return filesCache.get("files");
-  }
-  let data = {};
-  if (USE_LOCAL_DATA) {
-    console.log("fetching local data");
-    data = getLocalData();
-  } else {
-    const repos = await getRepositories();
-    for (const repo of repos) {
-      const folderStructure = await fetchFolderStructure(repo.name);
-      if (folderStructure) {
-        data[repo.name] = folderStructure;
-      } else {
-        console.error(
-          `fetchFolderStructure returned falsy value for repo: ${repo.name}`
-        );
+  try {
+    if (filesCache.get("files")) {
+      logger.info("fetching data from cache");
+      return filesCache.get("files");
+    }
+    let data = {};
+    if (USE_LOCAL_DATA) {
+      logger.info("fetching local data");
+      data = getLocalData();
+    } else {
+      const repos = await getRepositories();
+      for (const repo of repos) {
+        const folderStructure = await fetchFolderStructure(repo.name);
+        if (folderStructure) {
+          data[repo.name] = folderStructure;
+        } else {
+          logger.error(
+            `fetchFolderStructure returned falsy value for repo: ${repo.name}`
+          );
+        }
       }
     }
+    filesCache.set("files", data);
+    return data;
+  } catch (error) {
+    logger.error(`Error in fetchData: ${error.message}`);
+    throw error;
   }
-  filesCache.set("files", data);
-  return data;
 }
 
 function filesRoutes(app) {
-  function ensureDataLoaded(req, res, next) {
-    if (!filesCache.get("files")) {
-      console.log("Data not loaded, loading data...");
-      loadDataAndCreateRoutes()
-        .then(() => {
-          next();
-        })
-        .catch((error) => {
-          console.error(error);
-          res.status(500).json({ error: error.message });
-        });
-    } else {
-      next();
+  async function ensureDataLoaded(req, res, next) {
+    try {
+      if (!filesCache.get("files")) {
+        logger.info("Data not loaded, loading data...");
+        await loadDataAndCreateRoutes();
+        next();
+      } else {
+        next();
+      }
+    } catch (error) {
+      next(error);
     }
   }
 
   async function loadDataAndCreateRoutes() {
-    const data = await fetchData();
-    if (!areRoutesCreated) {
-      createRoutes("/files", data, app);
-      areRoutesCreated = true;
+    try {
+      const data = await fetchData();
+      if (!areRoutesCreated) {
+        createRoutes("/files", data, app);
+        areRoutesCreated = true;
+      }
+    } catch (error) {
+      throw error;
     }
   }
 
@@ -75,15 +83,13 @@ function filesRoutes(app) {
       const data = await fetchData();
       res.json(data);
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: error.message });
+      next(error);
     }
   });
 
   app.get("/files/refresh", async (req, res) => {
     try {
       const data = await fetchData();
-      // reset areRoutesCreated flag to force routes creation again
       areRoutesCreated = false;
       if (!areRoutesCreated) {
         createRoutes("/files", data, app);
@@ -91,11 +97,10 @@ function filesRoutes(app) {
       }
       res.json(data);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      next(error);
     }
   });
 
-  // A recursive function to create routes from the files object
   function createRoutes(prefix, obj, app) {
     if (obj) {
       Object.entries(obj).forEach(([key, value]) => {

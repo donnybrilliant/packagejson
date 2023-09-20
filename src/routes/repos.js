@@ -1,7 +1,7 @@
 import { getRepositories } from "../services/api.js";
 
 function reposRoutes(app) {
-  app.get("/repos", async (req, res) => {
+  app.get("/repos", async (req, res, next) => {
     try {
       const type = req.query.type || "public";
       const repos = await getRepositories(type);
@@ -10,7 +10,7 @@ function reposRoutes(app) {
         .join("<br>");
       res.send(repoLinks);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      next(error);
     }
   });
 }

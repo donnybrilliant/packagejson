@@ -3,16 +3,21 @@ import { ENV } from "../../config/index.js";
 import { logger } from "../middleware/logger.js";
 
 export async function fetchGitHubAPI(endpoint) {
-  const response = await fetch(`${ENV.GITHUB_API_URL}${endpoint}`, {
-    headers: {
-      Authorization: `token ${ENV.GITHUB_TOKEN}`,
-      Accept: "application/vnd.github.v3+json",
-    },
-  });
-  logger.info(
-    `API call to ${ENV.GITHUB_API_URL}${endpoint} with status ${response.status} ${response.statusText}`
-  );
-  return response.json();
+  try {
+    const response = await fetch(`${ENV.GITHUB_API_URL}${endpoint}`, {
+      headers: {
+        Authorization: `token ${ENV.GITHUB_TOKEN}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+    logger.info(
+      `API call to ${ENV.GITHUB_API_URL}${endpoint} with status ${response.status} ${response.statusText}`
+    );
+    return response.json();
+  } catch (error) {
+    logger.error(`Error in fetchGitHubAPI: ${error.message}`);
+    throw error;
+  }
 }
 
 export async function getRepositories(type = "public") {
@@ -51,8 +56,8 @@ export async function fetchFolderStructure(repoName, path = "") {
       return structure;
     }
   } catch (error) {
-    console.error(error);
-    return null;
+    logger.error(`Error in fetchFolderStructure: ${error.message}`);
+    throw error;
   }
 }
 
@@ -66,7 +71,7 @@ export async function fetchFileContent(repoName, filePath) {
     }
     return null;
   } catch (error) {
-    console.error(error);
-    return null;
+    logger.error(`Error in fetchFileContent: ${error.message}`);
+    throw error;
   }
 }

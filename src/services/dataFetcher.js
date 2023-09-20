@@ -44,7 +44,7 @@ export async function fetchAggregatedData(versionType = "max") {
     packageJsonCache.set(`packageData-${versionType}`, aggregatedData);
     return aggregatedData;
   } catch (error) {
-    console.error(error);
+    logger.error(`Error in fetchAggregatedData ${error.message}`);
     throw error;
   }
 }

@@ -2,7 +2,7 @@ import { packageJsonCache } from "../utils/cache.js";
 import { fetchAggregatedData } from "../services/dataFetcher.js";
 
 function packageRoutes(app) {
-  app.get("/package.json", async (req, res) => {
+  app.get("/package.json", async (req, res, next) => {
     try {
       const versionType = req.query.version || "max";
 
@@ -14,18 +14,18 @@ function packageRoutes(app) {
       const data = await fetchAggregatedData(versionType);
       res.json(data);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      next(error);
     }
   });
 
-  app.get("/package.json/refresh", async (req, res) => {
+  app.get("/package.json/refresh", async (req, res, next) => {
     try {
       const versionType = req.query.version || "max";
 
       const data = await fetchAggregatedData(versionType);
       res.json(data);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      next(error);
     }
   });
 }

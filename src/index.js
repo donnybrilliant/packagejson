@@ -6,6 +6,7 @@ import indexRoutes from "./routes/index.js";
 import reposRoutes from "./routes/repos.js";
 import packageRoutes from "./routes/package.js";
 import filesRoutes from "./routes/files.js";
+import netlifyRoutes from "./routes/netlify.js";
 import errorHandler from "./middleware/errorHandler.js";
 
 const app = express();
@@ -16,6 +17,7 @@ indexRoutes(app);
 reposRoutes(app);
 packageRoutes(app);
 filesRoutes(app);
+netlifyRoutes(app);
 
 app.use(errorHandler);
 

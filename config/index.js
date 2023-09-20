@@ -5,6 +5,9 @@ const ENV = {
   GITHUB_API_URL: process.env.GITHUB_API_URL || "https://api.github.com",
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   USERNAME: process.env.USERNAME,
+  NETLIFY_API_URL:
+    process.env.NETLIFY_API_URL || "https://api.netlify.com/api/v1",
+  NETLIFY_API_TOKEN: process.env.NETLIFY_API_TOKEN,
   PORT: process.env.PORT || 3000,
   NODE_ENV: process.env.NODE_ENV || "development",
 };
