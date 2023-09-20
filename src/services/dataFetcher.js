@@ -1,10 +1,22 @@
 import { getRepositories, getPackageDetails } from "./api.js";
 import { packageJsonCache } from "../utils/cache.js";
+import semver from "semver";
 
-export async function fetchAggregatedData() {
+export async function fetchAggregatedData(versionType = "max") {
   try {
+    const cachedData = packageJsonCache.get(`packageData-${versionType}`);
+    if (cachedData) {
+      return cachedData;
+    }
+
     const repos = await getRepositories("all");
+
     const aggregatedData = {
+      dependencies: {},
+      devDependencies: {},
+    };
+
+    const tempData = {
       dependencies: {},
       devDependencies: {},
     };
@@ -12,21 +24,72 @@ export async function fetchAggregatedData() {
     for (const repo of repos) {
       const packageDetails = await getPackageDetails(repo.name);
       if (packageDetails) {
-        aggregatedData.dependencies = {
-          ...aggregatedData.dependencies,
-          ...packageDetails.dependencies,
-        };
-        aggregatedData.devDependencies = {
-          ...aggregatedData.devDependencies,
-          ...packageDetails.devDependencies,
-        };
+        aggregateVersion(
+          aggregatedData.dependencies,
+          packageDetails.dependencies,
+          versionType,
+          "dependencies",
+          tempData
+        );
+        aggregateVersion(
+          aggregatedData.devDependencies,
+          packageDetails.devDependencies,
+          versionType,
+          "devDependencies",
+          tempData
+        );
       }
     }
 
-    packageJsonCache.set("packageData", aggregatedData);
+    packageJsonCache.set(`packageData-${versionType}`, aggregatedData);
     return aggregatedData;
   } catch (error) {
     console.error(error);
     throw error;
+  }
+}
+
+function aggregateVersion(
+  aggregated,
+  current,
+  versionType = "max",
+  depType,
+  tempData
+) {
+  for (const [name, version] of Object.entries(current || {})) {
+    const cleanedCurrentVersion = semver.coerce(version);
+
+    if (!tempData[depType][name]) {
+      tempData[depType][name] = {
+        min: cleanedCurrentVersion.version,
+        max: cleanedCurrentVersion.version,
+      };
+    } else {
+      const cleanedMinVersion = semver.coerce(tempData[depType][name].min);
+      const cleanedMaxVersion = semver.coerce(tempData[depType][name].max);
+
+      if (semver.lt(cleanedCurrentVersion, cleanedMinVersion)) {
+        tempData[depType][name].min = cleanedCurrentVersion.version;
+      }
+
+      if (semver.gt(cleanedCurrentVersion, cleanedMaxVersion)) {
+        tempData[depType][name].max = cleanedCurrentVersion.version;
+      }
+    }
+  }
+
+  // Converting the aggregated data into required format based on the versionType parameter
+  for (const [name, versionData] of Object.entries(tempData[depType])) {
+    if (versionType === "min") {
+      aggregated[name] = versionData.min;
+    } else if (versionType === "max") {
+      aggregated[name] = versionData.max;
+    } else if (versionType === "minmax") {
+      // Check if min and max are the same, if so, just show one version
+      aggregated[name] =
+        versionData.min === versionData.max
+          ? versionData.min
+          : `${versionData.min} - ${versionData.max}`;
+    }
   }
 }
