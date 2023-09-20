@@ -78,14 +78,12 @@ function aggregateVersion(
     }
   }
 
-  // Converting the aggregated data into required format based on the versionType parameter
   for (const [name, versionData] of Object.entries(tempData[depType])) {
     if (versionType === "min") {
       aggregated[name] = versionData.min;
     } else if (versionType === "max") {
       aggregated[name] = versionData.max;
     } else if (versionType === "minmax") {
-      // Check if min and max are the same, if so, just show one version
       aggregated[name] =
         versionData.min === versionData.max
           ? versionData.min

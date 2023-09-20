@@ -23,4 +23,6 @@ const LOG_SETTINGS = {
   MORGAN: "access.log",
 };
 
-export { ENV, CACHE_SETTINGS, LOG_SETTINGS };
+const USE_LOCAL_DATA = false;
+
+export { ENV, CACHE_SETTINGS, LOG_SETTINGS, USE_LOCAL_DATA };
