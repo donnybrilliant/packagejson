@@ -81,7 +81,7 @@ function filesRoutes(app) {
   app.get("/files", async (req, res) => {
     try {
       const data = await fetchData();
-      res.json(data);
+      return res.json(data);
     } catch (error) {
       next(error);
     }
@@ -95,7 +95,7 @@ function filesRoutes(app) {
         createRoutes("/files", data, app);
         areRoutesCreated = true;
       }
-      res.json(data);
+      return res.json(data);
     } catch (error) {
       next(error);
     }

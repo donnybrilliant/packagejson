@@ -12,7 +12,7 @@ function packageRoutes(app) {
       }
 
       const data = await fetchAggregatedData(versionType);
-      res.json(data);
+      return res.json(data);
     } catch (error) {
       next(error);
     }
@@ -23,7 +23,7 @@ function packageRoutes(app) {
       const versionType = req.query.version || "max";
 
       const data = await fetchAggregatedData(versionType);
-      res.json(data);
+      return res.json(data);
     } catch (error) {
       next(error);
     }

@@ -12,7 +12,11 @@ export async function getNetlifySites() {
     logger.info(
       `API call to ${ENV.NETLIFY_API_URL}/sites with status ${response.status} ${response.statusText}`
     );
-    return data.map((site) => ({ name: site.name, url: site.url }));
+    return data.map((site) => ({
+      name: site.name,
+      url: site.url,
+      img: site.screenshot_url,
+    }));
   } catch (error) {
     logger.error(`Error in fetchGitHubAPI: ${error.message}`);
     throw error;
