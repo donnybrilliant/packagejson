@@ -2,12 +2,16 @@ import { config } from "dotenv";
 config();
 
 const ENV = {
+  USERNAME: process.env.USERNAME,
   GITHUB_API_URL: process.env.GITHUB_API_URL || "https://api.github.com",
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
-  USERNAME: process.env.USERNAME,
   NETLIFY_API_URL:
     process.env.NETLIFY_API_URL || "https://api.netlify.com/api/v1",
-  NETLIFY_API_TOKEN: process.env.NETLIFY_API_TOKEN,
+  NETLIFY_TOKEN: process.env.NETLIFY_TOKEN,
+  VERCEL_API_URL: process.env.VERCEL_API_URL || "https://api.vercel.com",
+  VERCEL_TOKEN: process.env.VERCEL_TOKEN,
+  RENDER_API_URL: process.env.RENDER_API_URL || "https://api.render.com/v1",
+  RENDER_TOKEN: process.env.RENDER_TOKEN,
   PORT: process.env.PORT || 3000,
   NODE_ENV: process.env.NODE_ENV || "development",
 };

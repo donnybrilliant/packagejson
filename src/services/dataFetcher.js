@@ -1,4 +1,4 @@
-import { getRepositories, getPackageDetails } from "./api.js";
+import { getRepositories, getPackageDetails } from "./github.js";
 import { packageJsonCache } from "../utils/cache.js";
 import semver from "semver";
 

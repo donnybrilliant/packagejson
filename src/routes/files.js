@@ -1,5 +1,5 @@
 import { filesCache } from "../utils/cache.js";
-import { getRepositories, fetchFolderStructure } from "../services/api.js";
+import { getRepositories, fetchFolderStructure } from "../services/github.js";
 import { logger } from "../middleware/logger.js";
 import fs from "fs";
 import { USE_LOCAL_DATA } from "../../config/index.js";

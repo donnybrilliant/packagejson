@@ -1,4 +1,4 @@
-import { getRepositories } from "../services/api.js";
+import { getRepositories } from "../services/github.js";
 
 function reposRoutes(app) {
   const fetchAndFormatRepos = async (repoType, req, res, next) => {
