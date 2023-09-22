@@ -39,6 +39,48 @@ import { logger } from "../middleware/logger.js";
  */
 
 function packageRoutes(app) {
+  /**
+   * @openapi
+   * /package.json:
+   *   get:
+   *     description: Retrieves the aggregated package.json data.
+   *     parameters:
+   *       - in: query
+   *         name: version
+   *         schema:
+   *           type: string
+   *           enum: [min, max]
+   *           default: max
+   *         description: The type of version (min or max) for aggregated data. Defaults to 'max'.
+   *     responses:
+   *       200:
+   *         description: Successful retrieval of package.json data.
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               description: Aggregated package.json data.
+   *       500:
+   *         description: Internal Server Error.
+   *
+   * /package.json/refresh:
+   *   get:
+   *     description: Refreshes the aggregated package.json data and redirects to /package.json.
+   *     parameters:
+   *       - in: query
+   *         name: version
+   *         schema:
+   *           type: string
+   *           enum: [min, max]
+   *           default: max
+   *         description: The type of version (min or max) for aggregated data. Defaults to 'max'.
+   *     responses:
+   *       302:
+   *         description: Successfully refreshed data and redirected to /package.json.
+   *       500:
+   *         description: Internal Server Error.
+   *
+   */
   app.get("/package.json", async (req, res, next) => {
     try {
       const versionType = req.query.version || "max";

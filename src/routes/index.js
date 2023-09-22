@@ -13,6 +13,20 @@
  */
 
 function indexRoutes(app) {
+  /**
+   * @openapi
+   * /:
+   *   get:
+   *     description: Provides a list of clickable links to various routes in the application.
+   *     responses:
+   *       200:
+   *         description: Successful Response
+   *         content:
+   *           text/html:
+   *             schema:
+   *               type: string
+   *               description: List of links
+   */
   app.get("/", (req, res) => {
     res.send(`
           <a href="/package.json">package.json</a><br />

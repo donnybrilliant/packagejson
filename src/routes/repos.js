@@ -60,12 +60,28 @@ function reposRoutes(app) {
   // The handleResponseType middleware
   app.use("/repos", handleResponseType);
 
-  // Fetch and display Public repositories
+  /**
+   * @openapi
+   * /repos:
+   *   get:
+   *     description: Fetch and display Public repositories
+   *     responses:
+   *       200:
+   *         description: A list of public repositories.
+   */
   app.get("/repos", (req, res, next) => {
     fetchAndFormatRepos("public", req, res, next);
   });
 
-  // Fetch and display ALL repositories
+  /**
+   * @openapi
+   * /repos/all:
+   *   get:
+   *     description: Fetch and display All repositories
+   *     responses:
+   *       200:
+   *         description: A list of all repositories.
+   */
   app.get("/repos/all", (req, res, next) => {
     fetchAndFormatRepos("all", req, res, next);
   });

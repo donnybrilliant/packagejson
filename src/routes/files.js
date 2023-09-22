@@ -150,6 +150,29 @@ function filesRoutes(app) {
    * @response {string|object} links|data - response can be either HTML links or JSON data
    * @error {Error} 500 - 'Internal Server Error' if there is an issue fetching the data
    */
+
+  /**
+   * Middleware applied to all routes under "/files". It ensures data is loaded
+   * and determines the appropriate response type before executing the route handler
+   * @openapi
+   * /files:
+   *   get:
+   *     description: Fetches data (either locally or from GitHub based on config) and returns it as HTML links or JSON based on request headers.
+   *     responses:
+   *       200:
+   *         description: Successful Response
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               description: Data fetched
+   *           text/html:
+   *             schema:
+   *               type: string
+   *               description: HTML Links
+   *       500:
+   *         description: Internal Server Error
+   */
   app.get("/files", async (req, res, next) => {
     try {
       const data = await fetchData();
@@ -173,6 +196,20 @@ function filesRoutes(app) {
    * @path {GET} /files/refresh
    * @code {302} if the server successfully refreshes the data and redirects
    * @code {500} if there is an issue fetching the data and refreshing the routes
+   */
+  /**
+   * Handles GET request on "/files/refresh" route.
+   * Fetches data (either locally or from GitHub based on config),
+   * recreates the routes dynamically, and redirects to "/files".
+   * @openapi
+   * /files/refresh:
+   *   get:
+   *     description: Fetches data (either locally or from GitHub based on config), recreates the routes dynamically, and redirects to "/files".
+   *     responses:
+   *       302:
+   *         description: Data refreshed and redirected to /files
+   *       500:
+   *         description: Internal Server Error
    */
   app.get("/files/refresh", async (req, res) => {
     try {

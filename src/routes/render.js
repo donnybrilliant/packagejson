@@ -7,6 +7,22 @@ import { getRenderSites } from "../services/render.js";
  * in line in the Express.js request-response cycle.
  *
  * @param {object} app - The express application object
+ *
+ * @openapi
+ * /render:
+ *   get:
+ *     description: Retrieve render site data from an external resource.
+ *     responses:
+ *       200:
+ *         description: Successful retrieval of render site data.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               description: Render site data.
+ *       500:
+ *         description: Internal Server Error or error in data retrieval.
+ *
  */
 function renderRoutes(app) {
   app.get("/render", async (req, res, next) => {
