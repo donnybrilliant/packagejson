@@ -1,7 +1,22 @@
 import handleResponseType from "../middleware/handleResponseType.js";
 import { getRepositories } from "../services/github.js";
 
+/**
+ * The reposRoutes function sets up several routes in an Express.js application.
+ *
+ * @param {Object} app - An instance of the Express.js application.
+ * @returns {void}
+ */
 function reposRoutes(app) {
+  /**
+   * A helper function to fetch repositories of a certain type and format the response.
+   * @async
+   * @param {string} repoType - The type of repositories to fetch.
+   * @param {Object} req - The Express request object.
+   * @param {Object} res - The Express response object.
+   * @param {Function} next - The next function.
+   * @returns {Object | void} The express response, or void if next() is called with an error.
+   */
   const fetchAndFormatRepos = async (repoType, req, res, next) => {
     try {
       const repos = await getRepositories(repoType);
@@ -42,13 +57,15 @@ function reposRoutes(app) {
     }
   };
 
+  // The handleResponseType middleware
   app.use("/repos", handleResponseType);
 
+  // Fetch and display Public repositories
   app.get("/repos", (req, res, next) => {
-    // Default type if you want a different type for this route
     fetchAndFormatRepos("public", req, res, next);
   });
 
+  // Fetch and display ALL repositories
   app.get("/repos/all", (req, res, next) => {
     fetchAndFormatRepos("all", req, res, next);
   });

@@ -1,0 +1,17 @@
+{
+    "source": {
+        "include": [
+            "./src",
+            "./config"
+        ],
+        "exclude": [
+            "node_modules",
+            "logs"
+        ]
+    },
+    "plugins": [],
+    "opts": {
+        "destination": "./docs/",
+        "recurse": true
+    }
+}

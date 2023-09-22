@@ -1,6 +1,25 @@
 import { config } from "dotenv";
 config();
 
+/** Flag to determine if local data should be used */
+const USE_LOCAL_DATA = true;
+/** Flag to determine if files should be saved */
+const SAVE_FILE = true;
+/** Flag to determine if only links should be saved */
+const ONLY_SAVE_LINKS = true;
+
+/** Duration of one week in seconds */
+const ONE_WEEK = 7 * 24 * 60 * 60;
+/** Duration of one month in seconds */
+const ONE_MONTH = 4 * ONE_WEEK;
+
+/** Configuration settings related to caching durations */
+const CACHE_SETTINGS = {
+  ONE_WEEK,
+  ONE_MONTH,
+};
+
+/** Environment variable configurations */
 const ENV = {
   USERNAME: process.env.USERNAME,
   GITHUB_API_URL: process.env.GITHUB_API_URL || "https://api.github.com",
@@ -16,24 +35,16 @@ const ENV = {
   NODE_ENV: process.env.NODE_ENV || "development",
 };
 
-const ONE_WEEK = 7 * 24 * 60 * 60;
-const ONE_MONTH = 4 * ONE_WEEK;
-
-const CACHE_SETTINGS = {
-  ONE_WEEK,
-  ONE_MONTH,
-};
-
+/** Logging settings and configurations */
 const LOG_SETTINGS = {
   DIRECTORY: "./logs",
+  /** Winston log file name */
   WINSTON: "api_calls.log",
+  /** Morgan access log file name */
   MORGAN: "access.log",
 };
 
-const USE_LOCAL_DATA = true;
-const SAVE_FILE = true;
-const ONLY_SAVE_LINKS = true;
-
+/** List of recognized image extensions */
 const IMAGE_EXTENSIONS = [
   ".jpg",
   ".jpeg",
@@ -46,6 +57,8 @@ const IMAGE_EXTENSIONS = [
   ".ico",
   ".pdf",
 ];
+
+/** List of recognized video extensions */
 const VIDEO_EXTENSIONS = [
   ".mp4",
   ".avi",

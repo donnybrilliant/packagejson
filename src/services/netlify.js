@@ -2,6 +2,12 @@ import fetch from "node-fetch";
 import { ENV } from "../../config/index.js";
 import { logger } from "../middleware/logger.js";
 
+/**
+ * Fetches and returns site details from Netlify for the authenticated user.
+ * @async
+ * @returns {Promise<Array<Object>>} An array containing details of each site. Each object includes the site's name, URLs, image, repository link, and Node.js version.
+ * @throws Will log an error if any issues occur during the API call.
+ */
 export async function getNetlifySites() {
   try {
     const response = await fetch(`${ENV.NETLIFY_API_URL}/sites`, {

@@ -5,6 +5,12 @@ import { logger } from "../middleware/logger.js";
 import { packageJsonCache } from "../utils/cache.js";
 import semver from "semver";
 
+/**
+ * Fetches data from the GitHub API.
+ * @async
+ * @param {string} endpoint - The API endpoint to call.
+ * @returns {Promise<Object>} The data returned from the API.
+ */
 export async function fetchGitHubAPI(endpoint) {
   try {
     const response = await fetch(`${ENV.GITHUB_API_URL}${endpoint}`, {
@@ -22,10 +28,22 @@ export async function fetchGitHubAPI(endpoint) {
   }
 }
 
+/**
+ * Retrieves the repositories of the user.
+ * @async
+ * @param {string} [type="public"] - Type of repositories to retrieve.
+ * @returns {Promise<Array<Object>>} An array of repositories.
+ */
 export async function getRepositories(type = "public") {
   return fetchGitHubAPI(`/user/repos?type=${type}&per_page=100`);
 }
 
+/**
+ * Retrieves the package details for a given repository.
+ * @async
+ * @param {string} repoName - The name of the repository.
+ * @returns {Promise<Object|null>} An object containing the dependencies and devDependencies, or null if not found.
+ */
 export async function getPackageDetails(repoName) {
   const packageJsonContent = await fetchFileContent(repoName, "package.json");
   if (packageJsonContent) {
@@ -38,6 +56,13 @@ export async function getPackageDetails(repoName) {
   return null;
 }
 
+/**
+ * Fetches the folder structure for a given repository.
+ * @async
+ * @param {string} repoName - The name of the repository.
+ * @param {string} [path=""] - The path inside the repository.
+ * @returns {Promise<Object|null>} An object representing the folder structure.
+ */
 export async function fetchFolderStructure(repoName, path = "") {
   try {
     const data = await fetchGitHubAPI(
@@ -66,6 +91,14 @@ export async function fetchFolderStructure(repoName, path = "") {
   }
 }
 
+/**
+ * Fetches the content of a file in a repository.
+ * @async
+ * @param {string} repoName - The name of the repository.
+ * @param {string} filePath - Path to the file inside the repository.
+ * @param {boolean} [alwaysProvideLink=false] - Whether to always return a link regardless of the file type.
+ * @returns {Promise<string|null>} The content of the file or a link to it, or null if not found.
+ */
 export async function fetchFileContent(
   repoName,
   filePath,
@@ -93,6 +126,12 @@ export async function fetchFileContent(
   }
 }
 
+/**
+ * Fetches aggregated dependency data from all repositories of the user.
+ * @async
+ * @param {string} [versionType="max"] - The type of version to fetch (min, max, or minmax).
+ * @returns {Promise<Object|null>} An object containing aggregated dependency data.
+ */
 export async function fetchAggregatedData(versionType = "max") {
   try {
     const cachedData = packageJsonCache.get(`packageData-${versionType}`);
@@ -139,6 +178,14 @@ export async function fetchAggregatedData(versionType = "max") {
   }
 }
 
+/**
+ * Aggregates dependency versions.
+ * @param {Object} aggregated - The aggregated dependency data.
+ * @param {Object} current - The current repository's dependency data.
+ * @param {string} [versionType="max"] - The type of version to fetch (min, max, or minmax).
+ * @param {string} depType - Type of dependencies (dependencies or devDependencies).
+ * @param {Object} tempData - Temporary data for aggregating versions.
+ */
 function aggregateVersion(
   aggregated,
   current,

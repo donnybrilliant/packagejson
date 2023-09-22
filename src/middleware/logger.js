@@ -5,6 +5,12 @@ import path from "path";
 
 const { combine, timestamp, label, printf } = format;
 
+/**
+ * A custom logger for an application.
+ * @type {winston.Logger}
+ * @constant
+ * @namespace logger
+ */
 export const logger = createLogger({
   level: "info",
   format: combine(
@@ -29,6 +35,12 @@ const accessLogStream = fs.createWriteStream(
   { flags: "a" }
 );
 
+/**
+ * Configuration for morgan middleware - for logging HTTP requests.
+ * @type {{format: string, options: {stream: WriteStream}}}
+ * @constant
+ * @namespace morganConfig
+ */
 export const morganConfig = {
   format:
     ":remote-addr :remote-user [:date[clf]] ':method :url HTTP/:http-version' :status :response-time ms :res[content-length] ':referrer' ':user-agent'",

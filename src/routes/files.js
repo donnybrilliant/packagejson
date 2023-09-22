@@ -1,3 +1,16 @@
+/**
+ * This module exports a function that sets up file-based routes in an HTTP server.
+ * @module filesRoutes
+ * @requires {@link ../utils/cache.js|cache}
+ * @requires {@link ../services/github.js|github}
+ * @requires {@link ../middleware/logger.js|logger}
+ * @requires fs
+ * @requires path
+ * @requires url
+ * @requires ../../config/index.js
+ * @requires {@link ../middleware/handleResponseType.js|handleResponseType}
+ */
+
 import { filesCache } from "../utils/cache.js";
 import { getRepositories, fetchFolderStructure } from "../services/github.js";
 import { logger } from "../middleware/logger.js";
@@ -9,6 +22,12 @@ import handleResponseType from "../middleware/handleResponseType.js";
 
 let areRoutesCreated = false;
 
+/**
+ * Fetches the local data.
+ * @function getLocalData
+ * @returns {object} The local data
+ * @private
+ */
 function getLocalData() {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -19,6 +38,14 @@ function getLocalData() {
   return JSON.parse(rawData);
 }
 
+/**
+ * Fetches the data from GitHub or local source.
+ * @async
+ * @function fetchData
+ * @returns {object} The GitHub or local data
+ * @throws Will throw an error if it fails to fetch the data
+ * @private
+ */
 async function fetchData() {
   try {
     if (filesCache.get("files")) {
@@ -59,7 +86,20 @@ async function fetchData() {
   }
 }
 
+/**
+ * The main entry point to set up file-based routes in the app.
+ * @function
+ * @param {object} app - The Express app
+ */
 function filesRoutes(app) {
+  /**
+   * Ensures the data is loaded before handing the request.
+   * @function
+   * @param {object} req - The request object
+   * @param {object} res - The response object
+   * @param {function} next - The next function for Express middleware
+   * @private
+   */
   async function ensureDataLoaded(req, res, next) {
     try {
       if (!filesCache.get("files")) {
@@ -74,6 +114,13 @@ function filesRoutes(app) {
     }
   }
 
+  /**
+   * Loads the data and creates routes.
+   * @async
+   * @function loadDataAndCreateRoutes
+   * @throws Will throw an error if it fails to fetch the data
+   * @private
+   */
   async function loadDataAndCreateRoutes() {
     try {
       const data = await fetchData();
@@ -86,8 +133,23 @@ function filesRoutes(app) {
     }
   }
 
+  /**
+   * Middleware applied to all routes under "/files". It ensures data is loaded
+   * and determines the appropriate response type before executing the route handler
+   */
   app.use("/files", ensureDataLoaded, handleResponseType);
 
+  /**
+   * Handles GET request on "/files" route.
+   * Fetches data (either locally or from GitHub based on config)
+   * and returns it as HTML links or JSON based on request headers.
+   *
+   * @name get/files
+   * @path {GET} /files
+   * @code {200} if the server successfully returns the data
+   * @response {string|object} links|data - response can be either HTML links or JSON data
+   * @error {Error} 500 - 'Internal Server Error' if there is an issue fetching the data
+   */
   app.get("/files", async (req, res, next) => {
     try {
       const data = await fetchData();
@@ -102,6 +164,16 @@ function filesRoutes(app) {
     }
   });
 
+  /**
+   * Handles GET request on "/files/refresh" route.
+   * Fetches data (either locally or from GitHub based on config),
+   * recreates the routes dynamically, and redirects to "/files".
+   *
+   * @name get/files/refresh
+   * @path {GET} /files/refresh
+   * @code {302} if the server successfully refreshes the data and redirects
+   * @code {500} if there is an issue fetching the data and refreshing the routes
+   */
   app.get("/files/refresh", async (req, res) => {
     try {
       const data = await fetchData();
@@ -116,6 +188,14 @@ function filesRoutes(app) {
     }
   });
 
+  /**
+   * Create routes dynamically.
+   * @function createRoutes
+   * @param {string} prefix - The prefix to prepend to the URL
+   * @param {object} obj - The object to extract routes from
+   * @param {object} app - The Express.js application instance
+   * @private
+   */
   function createRoutes(prefix, obj, app) {
     if (obj) {
       Object.entries(obj).forEach(([key, value]) => {
@@ -149,6 +229,14 @@ function filesRoutes(app) {
     }
   }
 
+  /**
+   * Converts object to HTML links.
+   * @function objectToLinks
+   * @param {string} prefix - The prefix to prepend to the URL
+   * @param {object} obj - The object to convert to HTML links
+   * @returns {string} HTML representation of links
+   * @private
+   */
   function objectToLinks(prefix, obj) {
     const links = Object.keys(obj)
       .map((key) => {
@@ -166,7 +254,13 @@ function filesRoutes(app) {
       </html>
     `;
   }
-
+  /**
+   * Validate url
+   * @function isUrl
+   * @param {?string} str - The string to check
+   * @returns {boolean} True if the string is a URL
+   * @private
+   */
   function isUrl(str) {
     try {
       new URL(str);
