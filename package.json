@@ -24,6 +24,8 @@
     "winston": "^3.10.0"
   },
   "devDependencies": {
-    "jsdoc": "^4.0.2"
+    "better-docs": "^2.7.2",
+    "jsdoc": "^4.0.2",
+    "taffydb": "^2.7.3"
   }
 }
