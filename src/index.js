@@ -10,6 +10,9 @@ import netlifyRoutes from "./routes/netlify.js";
 import renderRoutes from "./routes/render.js";
 import vercelRoutes from "./routes/vercel.js";
 import errorHandler from "./middleware/errorHandler.js";
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
+import swaggerOptions from "../swaggerOptions.js";
 
 /**
  * Initialize Express application
@@ -32,6 +35,12 @@ filesRoutes(app);
 netlifyRoutes(app);
 renderRoutes(app);
 vercelRoutes(app);
+
+/**
+ * Integrate Swagger after registering other routes
+ */
+const specs = swaggerJsdoc(swaggerOptions);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
 
 /**
  * Use error handling middleware

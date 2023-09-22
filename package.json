@@ -21,6 +21,8 @@
     "node-fetch": "^3.3.2",
     "path": "^0.12.7",
     "semver": "^7.5.4",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0",
     "winston": "^3.10.0"
   },
   "devDependencies": {
