@@ -20,6 +20,5 @@ export async function getRenderSites() {
     }));
   } catch (error) {
     logger.error(`Error in getRenderSites: ${error.message}`);
-    throw error;
   }
 }

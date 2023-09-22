@@ -15,6 +15,8 @@ const app = express();
 
 app.use(morgan(morganConfig.format, morganConfig.options));
 
+//app.use(handleResponseType);
+
 indexRoutes(app);
 reposRoutes(app);
 packageRoutes(app);

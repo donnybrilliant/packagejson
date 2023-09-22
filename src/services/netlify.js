@@ -24,6 +24,5 @@ export async function getNetlifySites() {
     }));
   } catch (error) {
     logger.error(`Error in getNetlifySites: ${error.message}`);
-    throw error;
   }
 }

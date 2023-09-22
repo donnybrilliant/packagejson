@@ -30,6 +30,39 @@ const LOG_SETTINGS = {
   MORGAN: "access.log",
 };
 
-const USE_LOCAL_DATA = false;
+const USE_LOCAL_DATA = true;
+const SAVE_FILE = true;
+const ONLY_SAVE_LINKS = true;
 
-export { ENV, CACHE_SETTINGS, LOG_SETTINGS, USE_LOCAL_DATA };
+const IMAGE_EXTENSIONS = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".bmp",
+  ".webp",
+  ".svg",
+  ".tiff",
+  ".ico",
+  ".pdf",
+];
+const VIDEO_EXTENSIONS = [
+  ".mp4",
+  ".avi",
+  ".mov",
+  ".mkv",
+  ".flv",
+  ".webm",
+  ".m4v",
+];
+
+export {
+  ENV,
+  CACHE_SETTINGS,
+  LOG_SETTINGS,
+  USE_LOCAL_DATA,
+  SAVE_FILE,
+  ONLY_SAVE_LINKS,
+  IMAGE_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+};

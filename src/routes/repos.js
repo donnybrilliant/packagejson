@@ -1,3 +1,4 @@
+import handleResponseType from "../middleware/handleResponseType.js";
 import { getRepositories } from "../services/github.js";
 
 function reposRoutes(app) {
@@ -23,11 +24,25 @@ function reposRoutes(app) {
         return object;
       });
 
-      return res.json(repoList);
+      if (req.isHtmlRequest) {
+        const listItems = repoList
+          .map((repo) => {
+            return `<li><a href="${repo.html_url}">${repo.name}</a></li>`;
+          })
+          .join("\n");
+
+        return res.send(
+          `<ul style="list-style: none; margin: 0; padding: 0;">${listItems}</ul>`
+        );
+      } else if (req.isJsonRequest) {
+        return res.json(repoList);
+      }
     } catch (error) {
       next(error);
     }
   };
+
+  app.use("/repos", handleResponseType);
 
   app.get("/repos", (req, res, next) => {
     // Default type if you want a different type for this route

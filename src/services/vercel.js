@@ -23,6 +23,5 @@ export async function getVercelSites() {
     }));
   } catch (error) {
     logger.error(`Error in getVercelSites: ${error.message}`);
-    throw error;
   }
 }

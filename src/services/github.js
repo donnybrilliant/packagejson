@@ -1,6 +1,9 @@
 import fetch from "node-fetch";
-import { ENV } from "../../config/index.js";
+import { ENV, ONLY_SAVE_LINKS } from "../../config/index.js";
+import { isImage, isVideo, isOtherBinary } from "../utils/extensions.js";
 import { logger } from "../middleware/logger.js";
+import { packageJsonCache } from "../utils/cache.js";
+import semver from "semver";
 
 export async function fetchGitHubAPI(endpoint) {
   try {
@@ -16,7 +19,6 @@ export async function fetchGitHubAPI(endpoint) {
     return response.json();
   } catch (error) {
     logger.error(`Error in fetchGitHubAPI: ${error.message}`);
-    throw error;
   }
 }
 
@@ -50,28 +52,132 @@ export async function fetchFolderStructure(repoName, path = "") {
             item.path
           );
         } else if (item.type === "file") {
-          structure[item.name] = await fetchFileContent(repoName, item.path);
+          structure[item.name] = await fetchFileContent(
+            repoName,
+            item.path,
+            ONLY_SAVE_LINKS
+          );
         }
       }
       return structure;
     }
   } catch (error) {
     logger.error(`Error in fetchFolderStructure: ${error.message}`);
-    throw error;
   }
 }
 
-export async function fetchFileContent(repoName, filePath) {
+export async function fetchFileContent(
+  repoName,
+  filePath,
+  alwaysProvideLink = false
+) {
   try {
     const data = await fetchGitHubAPI(
       `/repos/${ENV.USERNAME}/${repoName}/contents/${filePath}`
     );
+
+    if (
+      alwaysProvideLink ||
+      (data && (isImage(data) || isVideo(data) || isOtherBinary(data)))
+    ) {
+      return `https://github.com/${ENV.USERNAME}/${repoName}/blob/main/${filePath}`;
+    }
+
     if (data && data.content) {
       return Buffer.from(data.content, "base64").toString("utf-8");
     }
+
     return null;
   } catch (error) {
     logger.error(`Error in fetchFileContent: ${error.message}`);
-    throw error;
+  }
+}
+
+export async function fetchAggregatedData(versionType = "max") {
+  try {
+    const cachedData = packageJsonCache.get(`packageData-${versionType}`);
+    if (cachedData) {
+      return cachedData;
+    }
+
+    const repos = await getRepositories("all");
+
+    const aggregatedData = {
+      dependencies: {},
+      devDependencies: {},
+    };
+
+    const tempData = {
+      dependencies: {},
+      devDependencies: {},
+    };
+
+    for (const repo of repos) {
+      const packageDetails = await getPackageDetails(repo.name);
+      if (packageDetails) {
+        aggregateVersion(
+          aggregatedData.dependencies,
+          packageDetails.dependencies,
+          versionType,
+          "dependencies",
+          tempData
+        );
+        aggregateVersion(
+          aggregatedData.devDependencies,
+          packageDetails.devDependencies,
+          versionType,
+          "devDependencies",
+          tempData
+        );
+      }
+    }
+
+    packageJsonCache.set(`packageData-${versionType}`, aggregatedData);
+    return aggregatedData;
+  } catch (error) {
+    logger.error(`Error in fetchAggregatedData ${error.message}`);
+  }
+}
+
+function aggregateVersion(
+  aggregated,
+  current,
+  versionType = "max",
+  depType,
+  tempData
+) {
+  for (const [name, version] of Object.entries(current || {})) {
+    const cleanedCurrentVersion = semver.coerce(version);
+
+    if (!tempData[depType][name]) {
+      tempData[depType][name] = {
+        min: cleanedCurrentVersion.version,
+        max: cleanedCurrentVersion.version,
+      };
+    } else {
+      const cleanedMinVersion = semver.coerce(tempData[depType][name].min);
+      const cleanedMaxVersion = semver.coerce(tempData[depType][name].max);
+
+      if (semver.lt(cleanedCurrentVersion, cleanedMinVersion)) {
+        tempData[depType][name].min = cleanedCurrentVersion.version;
+      }
+
+      if (semver.gt(cleanedCurrentVersion, cleanedMaxVersion)) {
+        tempData[depType][name].max = cleanedCurrentVersion.version;
+      }
+    }
+  }
+
+  for (const [name, versionData] of Object.entries(tempData[depType])) {
+    if (versionType === "min") {
+      aggregated[name] = versionData.min;
+    } else if (versionType === "max") {
+      aggregated[name] = versionData.max;
+    } else if (versionType === "minmax") {
+      aggregated[name] =
+        versionData.min === versionData.max
+          ? versionData.min
+          : `${versionData.min} - ${versionData.max}`;
+    }
   }
 }
