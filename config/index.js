@@ -2,7 +2,7 @@ import { config } from "dotenv";
 config();
 
 /** Flag to determine if local data should be used */
-const USE_LOCAL_DATA = true;
+const USE_LOCAL_DATA = false;
 /** Flag to determine if files should be saved */
 const SAVE_FILE = true;
 /** Flag to determine if only links should be saved */
