@@ -1,6 +1,7 @@
 import { ENV } from "../config/index.js";
 import express from "express";
 import morgan from "morgan";
+import cors from "cors";
 import { morganConfig } from "./middleware/logger.js";
 import indexRoutes from "./routes/index.js";
 import reposRoutes from "./routes/repos.js";
