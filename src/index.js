@@ -21,6 +21,11 @@ import swaggerOptions from "../swaggerOptions.js";
 const app = express();
 
 /**
+ * Enable CORS for all routes
+ */
+app.use(cors());
+
+/**
  * Use morgan middleware for logging incoming requests
  */
 app.use(morgan(morganConfig.format, morganConfig.options));
