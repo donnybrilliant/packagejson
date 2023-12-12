@@ -57,5 +57,5 @@ app.use(errorHandler);
  * Start the server and listen on a port
  */
 app.listen(ENV.PORT, () => {
-  console.log(`Server is running on http://localhost:${ENV.PORT}`);
+  console.log(`Server is running on port ${ENV.PORT}`);
 });

@@ -171,6 +171,12 @@ export async function fetchAggregatedData(versionType = "max") {
       }
     }
 
+    // Sort dependencies and devDependencies alphabetically
+    aggregatedData.dependencies = sortObjectKeys(aggregatedData.dependencies);
+    aggregatedData.devDependencies = sortObjectKeys(
+      aggregatedData.devDependencies
+    );
+
     packageJsonCache.set(`packageData-${versionType}`, aggregatedData);
     return aggregatedData;
   } catch (error) {
@@ -227,4 +233,18 @@ function aggregateVersion(
           : `${versionData.min} - ${versionData.max}`;
     }
   }
+}
+
+/**
+ * Sorts an object's keys alphabetically and returns a new object.
+ * @param {Object} obj - The object to sort.
+ * @returns {Object} A new object with sorted keys.
+ */
+function sortObjectKeys(obj) {
+  return Object.keys(obj)
+    .sort()
+    .reduce((sortedObj, key) => {
+      sortedObj[key] = obj[key];
+      return sortedObj;
+    }, {});
 }
