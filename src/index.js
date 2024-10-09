@@ -46,7 +46,7 @@ vercelRoutes(app);
  * Integrate Swagger after registering other routes
  */
 const specs = swaggerJsdoc(swaggerOptions);
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(specs));
 
 /**
  * Use error handling middleware
