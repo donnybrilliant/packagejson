@@ -57,13 +57,34 @@ export async function getVercelSites() {
       };
     }
 
-    return data.projects.map((site) => ({
-      name: site.name,
-      url: "https://" + site.latestDeployments[0].alias[0],
-      repo: `https://${site.link.type}.com/${site.link.org}/${site.link.repo}`,
-      framework: site.framework,
-      node: site.nodeVersion,
-    }));
+    return data.projects.map((site) => {
+      // Safely extract URL from latest deployment
+      let url = null;
+      if (
+        site.latestDeployments &&
+        Array.isArray(site.latestDeployments) &&
+        site.latestDeployments.length > 0 &&
+        site.latestDeployments[0].alias &&
+        Array.isArray(site.latestDeployments[0].alias) &&
+        site.latestDeployments[0].alias.length > 0
+      ) {
+        url = "https://" + site.latestDeployments[0].alias[0];
+      }
+
+      // Safely extract repo URL
+      let repo = null;
+      if (site.link && site.link.type && site.link.org && site.link.repo) {
+        repo = `https://${site.link.type}.com/${site.link.org}/${site.link.repo}`;
+      }
+
+      return {
+        name: site.name || "Unknown",
+        url: url,
+        repo: repo,
+        framework: site.framework || null,
+        node: site.nodeVersion || null,
+      };
+    });
   } catch (error) {
     logger.error(`Error in getVercelSites: ${error.message}`);
     return {
