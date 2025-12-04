@@ -59,12 +59,14 @@ async function fetchData() {
     } else {
       const repos = await getRepositories();
       for (const repo of repos) {
-        const folderStructure = await fetchFolderStructure(repo.name);
+        // Use repo.owner.login to handle repos from organizations or other users
+        const owner = repo.owner?.login || repo.full_name?.split('/')[0];
+        const folderStructure = await fetchFolderStructure(repo.name, "", owner);
         if (folderStructure) {
           data[repo.name] = folderStructure;
         } else {
           logger.error(
-            `fetchFolderStructure returned falsy value for repo: ${repo.name}`
+            `fetchFolderStructure returned falsy value for repo: ${owner}/${repo.name}`
           );
         }
       }
@@ -129,7 +131,8 @@ function filesRoutes(app) {
         areRoutesCreated = true;
       }
     } catch (error) {
-      next(error);
+      logger.error(`Error in loadDataAndCreateRoutes: ${error.message}`);
+      throw error; // Re-throw so it can be caught by the calling middleware
     }
   }
 
@@ -211,7 +214,7 @@ function filesRoutes(app) {
    *       500:
    *         description: Internal Server Error
    */
-  app.get("/files/refresh", async (req, res) => {
+  app.get("/files/refresh", async (req, res, next) => {
     try {
       const data = await fetchData();
       areRoutesCreated = false;
@@ -236,7 +239,9 @@ function filesRoutes(app) {
   function createRoutes(prefix, obj, app) {
     if (obj) {
       Object.entries(obj).forEach(([key, value]) => {
-        const newPrefix = `${prefix}/${key}`;
+        // URL-encode the key to handle special characters like parentheses, brackets, etc.
+        const encodedKey = encodeURIComponent(key);
+        const newPrefix = `${prefix}/${encodedKey}`;
 
         if (typeof value === "object") {
           app.get(newPrefix, (req, res) => {
@@ -278,7 +283,9 @@ function filesRoutes(app) {
     const links = Object.keys(obj)
       .map((key) => {
         const value = obj[key];
-        const url = isUrl(value) ? value : `${prefix}/${key}`;
+        // URL-encode the key to match the encoded route paths
+        const encodedKey = encodeURIComponent(key);
+        const url = isUrl(value) ? value : `${prefix}/${encodedKey}`;
         return `<a href="${url}">${key}</a><br>`;
       })
       .join("");

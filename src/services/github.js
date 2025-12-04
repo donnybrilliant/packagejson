@@ -6,6 +6,27 @@ import { packageJsonCache } from "../utils/cache.js";
 import semver from "semver";
 
 /**
+ * Checks the current rate limit status.
+ * @async
+ * @returns {Promise<Object>} The rate limit status.
+ */
+async function checkRateLimit() {
+  try {
+    const response = await fetch(`${ENV.GITHUB_API_URL}/rate_limit`, {
+      headers: {
+        Authorization: `token ${ENV.GITHUB_TOKEN}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    });
+    const data = await response.json();
+    logger.info(`Rate limit status: ${JSON.stringify(data)}`);
+    return data;
+  } catch (error) {
+    logger.error(`Error in checkRateLimit: ${error.message}`);
+  }
+}
+
+/**
  * Fetches data from the GitHub API.
  * @async
  * @param {string} endpoint - The API endpoint to call.
@@ -19,12 +40,25 @@ export async function fetchGitHubAPI(endpoint) {
         Accept: "application/vnd.github.v3+json",
       },
     });
+
     logger.info(
       `API call to ${ENV.GITHUB_API_URL}${endpoint} with status ${response.status} ${response.statusText}`
     );
+
+    if (response.status === 403) {
+      logger.error(`403 Forbidden: Rate limit exceeded or token issue.`);
+      return null;
+    }
+
+    if (response.status === 404) {
+      const errorData = await response.json();
+      return errorData; // Return error object so calling functions can check for data.message
+    }
+
     return response.json();
   } catch (error) {
     logger.error(`Error in fetchGitHubAPI: ${error.message}`);
+    return null;
   }
 }
 
@@ -42,10 +76,11 @@ export async function getRepositories(type = "public") {
  * Retrieves the package details for a given repository.
  * @async
  * @param {string} repoName - The name of the repository.
+ * @param {string} [owner] - The owner of the repository (username or organization). Defaults to ENV.USERNAME.
  * @returns {Promise<Object|null>} An object containing the dependencies and devDependencies, or null if not found.
  */
-export async function getPackageDetails(repoName) {
-  const packageJsonContent = await fetchFileContent(repoName, "package.json");
+export async function getPackageDetails(repoName, owner = null) {
+  const packageJsonContent = await fetchFileContent(repoName, "package.json", false, owner);
   if (packageJsonContent) {
     const packageJson = JSON.parse(packageJsonContent);
     return {
@@ -61,33 +96,46 @@ export async function getPackageDetails(repoName) {
  * @async
  * @param {string} repoName - The name of the repository.
  * @param {string} [path=""] - The path inside the repository.
+ * @param {string} [owner] - The owner of the repository (username or organization). Defaults to ENV.USERNAME.
  * @returns {Promise<Object|null>} An object representing the folder structure.
  */
-export async function fetchFolderStructure(repoName, path = "") {
+export async function fetchFolderStructure(repoName, path = "", owner = null) {
   try {
+    const repoOwner = owner || ENV.USERNAME;
     const data = await fetchGitHubAPI(
-      `/repos/${ENV.USERNAME}/${repoName}/contents/${path}`
+      `/repos/${repoOwner}/${repoName}/contents/${path}`
     );
+    
+    // Check if the response is an error (e.g., 404 Not Found)
+    if (data && data.message) {
+      logger.error(`GitHub API error for ${repoOwner}/${repoName}: ${data.message}`);
+      return null;
+    }
+    
     if (Array.isArray(data)) {
       const structure = {};
       for (const item of data) {
         if (item.type === "dir") {
           structure[item.name] = await fetchFolderStructure(
             repoName,
-            item.path
+            item.path,
+            repoOwner
           );
         } else if (item.type === "file") {
           structure[item.name] = await fetchFileContent(
             repoName,
             item.path,
-            ONLY_SAVE_LINKS
+            ONLY_SAVE_LINKS,
+            repoOwner
           );
         }
       }
       return structure;
     }
+    return null;
   } catch (error) {
     logger.error(`Error in fetchFolderStructure: ${error.message}`);
+    return null;
   }
 }
 
@@ -97,23 +145,32 @@ export async function fetchFolderStructure(repoName, path = "") {
  * @param {string} repoName - The name of the repository.
  * @param {string} filePath - Path to the file inside the repository.
  * @param {boolean} [alwaysProvideLink=false] - Whether to always return a link regardless of the file type.
+ * @param {string} [owner] - The owner of the repository (username or organization). Defaults to ENV.USERNAME.
  * @returns {Promise<string|null>} The content of the file or a link to it, or null if not found.
  */
 export async function fetchFileContent(
   repoName,
   filePath,
-  alwaysProvideLink = false
+  alwaysProvideLink = false,
+  owner = null
 ) {
   try {
+    const repoOwner = owner || ENV.USERNAME;
     const data = await fetchGitHubAPI(
-      `/repos/${ENV.USERNAME}/${repoName}/contents/${filePath}`
+      `/repos/${repoOwner}/${repoName}/contents/${filePath}`
     );
+
+    // Check if the response is an error (e.g., 404 Not Found)
+    if (data && data.message) {
+      logger.error(`GitHub API error for ${repoOwner}/${repoName}/${filePath}: ${data.message}`);
+      return null;
+    }
 
     if (
       alwaysProvideLink ||
       (data && (isImage(data) || isVideo(data) || isOtherBinary(data)))
     ) {
-      return `https://github.com/${ENV.USERNAME}/${repoName}/blob/main/${filePath}`;
+      return `https://github.com/${repoOwner}/${repoName}/blob/main/${filePath}`;
     }
 
     if (data && data.content) {
@@ -123,6 +180,7 @@ export async function fetchFileContent(
     return null;
   } catch (error) {
     logger.error(`Error in fetchFileContent: ${error.message}`);
+    return null;
   }
 }
 
@@ -152,7 +210,9 @@ export async function fetchAggregatedData(versionType = "max") {
     };
 
     for (const repo of repos) {
-      const packageDetails = await getPackageDetails(repo.name);
+      // Use repo.owner.login to handle repos from organizations or other users
+      const owner = repo.owner?.login || repo.full_name?.split('/')[0];
+      const packageDetails = await getPackageDetails(repo.name, owner);
       if (packageDetails) {
         aggregateVersion(
           aggregatedData.dependencies,
@@ -248,3 +308,6 @@ function sortObjectKeys(obj) {
       return sortedObj;
     }, {});
 }
+
+// Call this function at the start of your service or before making API calls
+checkRateLimit();
