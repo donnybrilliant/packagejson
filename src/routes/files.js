@@ -229,9 +229,50 @@ function filesRoutes(app) {
   });
 
   /**
+   * Escapes special regex characters in a path segment for use in Express routes.
+   * This prevents path-to-regexp from interpreting special characters like parentheses,
+   * brackets, etc. as regex syntax. Express decodes URLs before route matching, so we
+   * need to escape the decoded path segments.
+   * @function escapeRegexChars
+   * @param {string} segment - The path segment to escape
+   * @returns {string} The escaped path segment
+   * @private
+   */
+  function escapeRegexChars(segment) {
+    // Escape special regex characters that path-to-regexp interprets
+    // This ensures literal characters like ( ) [ ] are treated as literals, not regex groups
+    return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /**
+   * Decodes URL-encoded path and rebuilds it with regex-escaped segments for route patterns.
+   * @function buildRoutePath
+   * @param {string} prefix - The current prefix (may be URL-encoded from recursive calls)
+   * @param {string} key - The new key to append
+   * @returns {string} The route path with regex-escaped segments
+   * @private
+   */
+  function buildRoutePath(prefix, key) {
+    // Split the prefix, decode each segment, escape regex chars, then rejoin
+    const segments = prefix.split("/").map(segment => {
+      if (!segment) return segment; // Empty segments (leading/trailing slashes)
+      try {
+        const decoded = decodeURIComponent(segment);
+        return escapeRegexChars(decoded);
+      } catch (e) {
+        // If decode fails, segment wasn't encoded, just escape it
+        return escapeRegexChars(segment);
+      }
+    });
+    // Add the new key (escaped)
+    segments.push(escapeRegexChars(key));
+    return segments.join("/");
+  }
+
+  /**
    * Create routes dynamically.
    * @function createRoutes
-   * @param {string} prefix - The prefix to prepend to the URL
+   * @param {string} prefix - The prefix to prepend to the URL (may be URL-encoded from recursive calls)
    * @param {object} obj - The object to extract routes from
    * @param {object} app - The Express.js application instance
    * @private
@@ -239,12 +280,15 @@ function filesRoutes(app) {
   function createRoutes(prefix, obj, app) {
     if (obj) {
       Object.entries(obj).forEach(([key, value]) => {
-        // URL-encode the key to handle special characters like parentheses, brackets, etc.
+        // Build route path with regex-escaped segments (for Express route registration)
+        const routePath = buildRoutePath(prefix, key);
+        
+        // Build URL-encoded prefix for navigation links (for use in HTML href attributes)
         const encodedKey = encodeURIComponent(key);
         const newPrefix = `${prefix}/${encodedKey}`;
 
         if (typeof value === "object") {
-          app.get(newPrefix, (req, res) => {
+          app.get(routePath, (req, res) => {
             if (req.isJsonRequest) {
               res.json(value);
             } else if (req.isHtmlRequest) {
@@ -252,9 +296,10 @@ function filesRoutes(app) {
               res.send(links);
             }
           });
+          // Recursively create routes with URL-encoded prefix for proper link generation
           createRoutes(newPrefix, value, app);
         } else {
-          app.get(newPrefix, (req, res) => {
+          app.get(routePath, (req, res) => {
             if (req.isJsonRequest) {
               res.json({ file: value });
             } else if (req.isHtmlRequest) {
