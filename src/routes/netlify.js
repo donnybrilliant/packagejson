@@ -1,4 +1,5 @@
 import { getNetlifySites } from "../services/netlify.js";
+import { createDeploymentPlatformRoute } from "../utils/deploymentPlatform.js";
 
 /**
  * Function to define routes for fetching Netlify site data.
@@ -22,19 +23,7 @@ import { getNetlifySites } from "../services/netlify.js";
  *         description: Internal Server Error.
  */
 function netlifyRoutes(app) {
-  /**
-   * Route handler for GET /netlify.
-   * Fetches Netlify site data and sends it as a JSON response.
-   * If an error occurs, it is passed to the next middleware.
-   */
-  app.get("/netlify", async (req, res, next) => {
-    try {
-      const data = await getNetlifySites();
-      return res.json(data);
-    } catch (error) {
-      next(error);
-    }
-  });
+  app.get("/netlify", createDeploymentPlatformRoute(getNetlifySites));
 }
 
 export default netlifyRoutes;

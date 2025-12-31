@@ -1,4 +1,5 @@
 import { getRenderSites } from "../services/render.js";
+import { createDeploymentPlatformRoute } from "../utils/deploymentPlatform.js";
 
 /**
  * Defines a GET route at "/render" on the provided express application.
@@ -18,24 +19,15 @@ import { getRenderSites } from "../services/render.js";
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               description: Render site data.
+ *               type: array
+ *               items:
+ *                 type: object
+ *               description: Array of Render site data.
  *       500:
  *         description: Internal Server Error or error in data retrieval.
- *
  */
 function renderRoutes(app) {
-  app.get("/render", async (req, res, next) => {
-    try {
-      // Fetches render sites data
-      const data = await getRenderSites();
-      // Sends the fetched data as JSON
-      return res.json(data);
-    } catch (error) {
-      // Passes the error to the next middleware
-      next(error);
-    }
-  });
+  app.get("/render", createDeploymentPlatformRoute(getRenderSites));
 }
 
 export default renderRoutes;

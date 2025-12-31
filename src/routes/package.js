@@ -81,9 +81,19 @@ function packageRoutes(app) {
    *         description: Internal Server Error.
    *
    */
+  /**
+   * Validates version type parameter
+   * @param {string} version - Version type from query
+   * @returns {string} Validated version type (defaults to "max")
+   */
+  function validateVersionType(version) {
+    const validTypes = ["min", "max", "minmax"];
+    return validTypes.includes(version) ? version : "max";
+  }
+
   app.get("/package.json", async (req, res, next) => {
     try {
-      const versionType = req.query.version || "max";
+      const versionType = validateVersionType(req.query.version);
 
       const cachedData = packageJsonCache.get(`packageData-${versionType}`);
       if (cachedData) {
@@ -99,10 +109,10 @@ function packageRoutes(app) {
 
   app.get("/package.json/refresh", async (req, res, next) => {
     try {
-      const versionType = req.query.version || "max";
-      logger.info("refreshing data...");
-      const data = await fetchAggregatedData(versionType);
-      return res.redirect("/package.json");
+      const versionType = validateVersionType(req.query.version);
+      logger.info(`Refreshing package data for version type: ${versionType}`);
+      await fetchAggregatedData(versionType);
+      return res.redirect(`/package.json?version=${versionType}`);
     } catch (error) {
       next(error);
     }
