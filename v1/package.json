@@ -1,0 +1,32 @@
+{
+  "name": "packagejson",
+  "version": "1.1.4",
+  "description": "",
+  "main": "./src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch ./src/index.js",
+    "start": "node ./src/index.js",
+    "docs": "jsdoc -c jsdoc.json"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "fs": "^0.0.1-security",
+    "morgan": "^1.10.1",
+    "node-cache": "^5.1.2",
+    "node-fetch": "^3.3.2",
+    "path": "^0.12.7",
+    "semver": "^7.7.3",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.18.3"
+  },
+  "devDependencies": {
+    "jsdoc": "^4.0.5"
+  }
+}
