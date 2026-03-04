@@ -72,6 +72,20 @@ const renderTreePlaceholder = () => {
   treeRoot.innerHTML = '<p class="placeholder">Choose an endpoint.</p>'
 }
 
+const renderLoadingState = (path) => {
+  treeRoot.innerHTML = '<p class="placeholder">Loading endpoint data…</p>'
+  previewPath.textContent = path
+  previewContent.innerHTML = "<code>Fetching data from API…</code>"
+}
+
+const renderErrorState = (path, message) => {
+  treeRoot.innerHTML = `<p class="placeholder">Failed to load endpoint.</p>`
+  previewPath.textContent = path
+  previewContent.innerHTML = `<code>${escapeHtml(
+    `Request failed for ${path}\n\n${message}\n\nCheck browser console for details.`
+  )}</code>`
+}
+
 const resetPreview = (message = "Click a node to preview.", label = "No file selected") => {
   previewPath.textContent = label
   previewContent.innerHTML = `<code>${escapeHtml(message)}</code>`
@@ -81,6 +95,24 @@ const getPointerPath = (node) => {
   if (!node) return state.selectedEndpointPath || "/"
   if (!node.pointer) return state.selectedEndpointPath || "/"
   return `${state.selectedEndpointPath}${node.pointer}`
+}
+
+const getSelectedEndpointPathname = () => {
+  try {
+    return new URL(state.selectedEndpointPath || "/", window.location.origin).pathname
+  } catch {
+    return state.selectedEndpointPath || "/"
+  }
+}
+
+const shouldFlattenRootForEndpoint = () => {
+  const pathname = getSelectedEndpointPathname()
+  return pathname === "/repos" || pathname === "/files"
+}
+
+const shouldCollapseAllFoldersByDefault = () => {
+  const pathname = getSelectedEndpointPathname()
+  return pathname === "/repos" || pathname === "/files"
 }
 
 const sortObjectEntries = (entries) => {
@@ -268,10 +300,15 @@ const buildTreeFromPayload = (payload) => {
 
   const rootName = state.selectedEndpointLabel || "response"
   const rootNodeId = createNode(rootName, payload, 0, null, "")
+  const collapseAllFolders = shouldCollapseAllFoldersByDefault()
 
   const collapsedNodeIds = new Set(
     Array.from(nodeMap.values())
-      .filter((node) => node.kind === "folder" && node.depth > 1)
+      .filter(
+        (node) =>
+          node.kind === "folder" &&
+          (collapseAllFolders ? node.depth >= 1 : node.depth > 1)
+      )
       .map((node) => node.id)
   )
 
@@ -352,7 +389,12 @@ const renderTree = () => {
     }
   }
 
-  renderNode(rootNode.id)
+  const hideRoot = shouldFlattenRootForEndpoint()
+  if (hideRoot && rootNode.childIds.length > 0) {
+    rootNode.childIds.forEach(renderNode)
+  } else {
+    renderNode(rootNode.id)
+  }
   treeRoot.innerHTML = `<div class="tree-list">${rows.join("")}</div>`
 }
 
@@ -390,6 +432,7 @@ const hydrateExplorer = (payload) => {
 const fetchEndpoint = async (path) => {
   setRequestStatus("loading", "info", "...")
   setSourceStatus("checking", "info")
+  renderLoadingState(path)
 
   const startTime = performance.now()
   const cachedEntry = state.endpointCache.get(path)
@@ -445,13 +488,11 @@ const fetchEndpoint = async (path) => {
     setSourceStatus(sourceText, sourceTone, sourceMeta)
     hydrateExplorer(payload)
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    console.error("endpoint.fetch.failed", { path, error: errorMessage })
     setRequestStatus("failed", "error", "--")
     setSourceStatus("unknown", "idle", "")
-
-    hydrateExplorer({
-      error: error instanceof Error ? error.message : "Unknown error",
-      endpoint: path,
-    })
+    renderErrorState(path, errorMessage)
   }
 }
 

@@ -44,6 +44,25 @@ const LINKS = [
   { href: "/files", label: "files" },
 ];
 
+/** Escape string for safe use in HTML content and attribute values (prevents XSS). */
+const escapeHtml = (str: string): string =>
+  String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+/** Return URL only if protocol is http or https; otherwise null (prevents javascript:/data: XSS). */
+const safeHrefUrl = (url: string): string | null => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+};
+
 const openapiConfig = {
   path: "/docs",
   exclude: {
@@ -82,7 +101,7 @@ const renderErrorHtml = (status: number, message: string) => `
   </head>
   <body>
     <h1>${status}</h1>
-    <p>${message}</p>
+    <p>${escapeHtml(message)}</p>
   </body>
 </html>
 `;
@@ -94,12 +113,11 @@ const parseCommaSeparatedEnv = (value: string): string[] =>
     .filter(Boolean);
 
 const corsOrigins = parseCommaSeparatedEnv(env.CORS_ORIGIN);
-const corsOrigin =
-  corsOrigins.length === 0 || corsOrigins.includes("*")
-    ? env.CORS_ALLOW_CREDENTIALS
-      ? true
-      : "*"
-    : corsOrigins;
+const corsOriginWildcard =
+  corsOrigins.length === 0 || corsOrigins.includes("*");
+/** Per CORS spec, credentials cannot be used with Allow-Origin: *; use a specific origin list instead. */
+const corsOrigin = corsOriginWildcard ? "*" : corsOrigins;
+const corsCredentials = corsOriginWildcard ? false : env.CORS_ALLOW_CREDENTIALS;
 
 const isUrl = (str: unknown): boolean => {
   if (typeof str !== "string") return false;
@@ -116,8 +134,9 @@ const objectToLinks = (prefix: string, obj: Record<string, unknown>): string => 
     .map((key) => {
       const value = obj[key];
       const encodedKey = encodeURIComponent(key);
-      const url = isUrl(value) ? String(value) : `${prefix}/${encodedKey}`;
-      return `<a href="${url}">${key}</a><br>`;
+      const rawUrl = isUrl(value) ? safeHrefUrl(String(value)) : null;
+      const url = rawUrl ?? `${prefix}/${encodedKey}`;
+      return `<a href="${escapeHtml(url)}">${escapeHtml(key)}</a><br>`;
     })
     .join("");
 
@@ -178,7 +197,6 @@ const createCachedJsonResponse = (
 export const createApp = async () =>
   new Elysia({
     name: "packagejson-core",
-    serve: env.PORT ? { port: env.PORT } : undefined,
   })
     .use(openapi(openapiConfig))
     .use(
@@ -187,7 +205,7 @@ export const createApp = async () =>
         methods: env.CORS_METHODS,
         allowedHeaders: env.CORS_HEADERS,
         exposeHeaders: env.CORS_EXPOSE_HEADERS || undefined,
-        credentials: env.CORS_ALLOW_CREDENTIALS,
+        credentials: corsCredentials,
         maxAge: env.CORS_MAX_AGE,
         preflight: true,
       })
@@ -387,9 +405,12 @@ export const createApp = async () =>
 
         if (typeof result === "string") {
           if (isUrl(result)) {
-            return new Response(`<a href="${result}">${pathSegments[pathSegments.length - 1]}</a>`, {
-              headers: { "content-type": "text/html; charset=utf-8" },
-            });
+            const safeUrl = safeHrefUrl(result) ?? "#";
+            const displayName = pathSegments[pathSegments.length - 1] ?? "";
+            return new Response(
+              `<a href="${escapeHtml(safeUrl)}">${escapeHtml(displayName)}</a>`,
+              { headers: { "content-type": "text/html; charset=utf-8" } }
+            );
           }
 
           return new Response(result, {
@@ -496,7 +517,8 @@ export const createApp = async () =>
               const stars = typeof repo.stars === "number" ? ` ⭐ ${repo.stars}` : "";
               const owner = (repo.owner as { login?: string })?.login || "unknown";
               const repoName = typeof repo.name === "string" ? repo.name : "unknown";
-              return `<li><a href="/repos/${owner}/${repoName}">${repoName}</a>${description}${stars}</li>`;
+              const safeHref = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`;
+              return `<li><a href="${escapeHtml(safeHref)}">${escapeHtml(repoName)}</a>${escapeHtml(description)}${stars}</li>`;
             })
             .join("\n");
 
@@ -564,29 +586,30 @@ export const createApp = async () =>
 
         let result = repoData as Record<string, unknown>;
 
+        const links = {
+          readme: `/repos/${owner}/${repo}/readme`,
+          languages: `/repos/${owner}/${repo}/languages`,
+          deployments: `/repos/${owner}/${repo}/deployments`,
+          npm: `/repos/${owner}/${repo}/npm`,
+          "deployment-links": `/repos/${owner}/${repo}/deployment-links`,
+        };
+        result._links = links;
+
         if (fieldsList.length > 0) {
           result = selectFields(result, fieldsList);
-        }
-
-        if (!fieldsList.length || fieldsList.includes("_links")) {
-          result._links = {
-            readme: `/repos/${owner}/${repo}/readme`,
-            languages: `/repos/${owner}/${repo}/languages`,
-            deployments: `/repos/${owner}/${repo}/deployments`,
-            npm: `/repos/${owner}/${repo}/npm`,
-            "deployment-links": `/repos/${owner}/${repo}/deployment-links`,
-          };
+          if (!fieldsList.includes("_links")) {
+            result._links = links;
+          }
         }
 
         const prefersHtml = (request.headers.get("accept") ?? "").includes("text/html");
 
         if (prefersHtml) {
-          return new Response(
-            `<html><body><h1>${String(result.name || repo)}</h1><p>${String(result.description || "")}</p></body></html>`,
-            {
-              headers: { "content-type": "text/html; charset=utf-8" },
-            }
-          );
+          const title = escapeHtml(String(result.name ?? repo));
+          const desc = escapeHtml(String(result.description ?? ""));
+          return new Response(`<html><body><h1>${title}</h1><p>${desc}</p></body></html>`, {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          });
         }
 
         return createCachedJsonResponse(request, { data: result }, 120);

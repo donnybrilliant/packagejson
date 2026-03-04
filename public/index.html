@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>packagejson Explorer</title>
+  <title>package.json</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -12,14 +12,15 @@
   <div class="app">
     <header class="header">
       <div>
-        <h1>packagejson explorer</h1>
+        <h1>package.json</h1>
         <p>Simple JSON explorer for package, repo metadata, and repo file trees.</p>
       </div>
       <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">Docs</a>
     </header>
 
     <section class="panel endpoint-panel">
-      <button type="button" class="endpoint-btn" data-path="/package.json" data-label="package.json">package.json</button>
+      <button type="button" class="endpoint-btn" data-path="/package.json"
+        data-label="package.json">package.json</button>
       <button type="button" class="endpoint-btn" data-path="/repos?type=public" data-label="repos">repos</button>
       <button type="button" class="endpoint-btn" data-path="/files?format=terminal" data-label="files">files</button>
     </section>

@@ -268,7 +268,13 @@ export const getRepositories = async (type: string = "public"): Promise<GitHubRe
     return TEST_REPOSITORIES.map((fixture) => fixture.repo);
   }
 
-  const data = await fetchGitHubAPI(`/user/repos?type=${type}&per_page=100&sort=updated`);
+  const username = env.USERNAME.trim();
+  const endpoint =
+    type === "public" && username
+      ? `/users/${encodeURIComponent(username)}/repos?type=owner&per_page=100&sort=updated`
+      : `/user/repos?type=${type}&per_page=100&sort=updated`;
+
+  const data = await fetchGitHubAPI(endpoint);
   return isArray(data) ? (data as GitHubRepo[]) : null;
 };
 

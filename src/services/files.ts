@@ -124,9 +124,6 @@ const getLocalData = async (): Promise<FilesData | null> => {
     }
 
     if (!resolved) {
-      log("warn", "Local data.json exists but does not contain valid VFS data", {
-        path: env.DATA_JSON_PATH,
-      });
       return null;
     }
 
@@ -162,16 +159,6 @@ const saveToDataJson = async (data: FilesData): Promise<void> => {
 };
 
 export const fetchFilesData = async (): Promise<FilesData> => {
-  const cached = await cache.get<FilesData>(CACHE_KEY);
-  if (cached && isLikelyFilesData(cached)) {
-    return cached;
-  }
-
-  if (cached) {
-    log("warn", "Discarding stale files cache payload with non-VFS shape");
-    await cache.del(CACHE_KEY);
-  }
-
   if (env.NODE_ENV === "test") {
     const data: FilesData = {
       "test-repo": {
@@ -198,6 +185,18 @@ export const fetchFilesData = async (): Promise<FilesData> => {
     log("warn", "USE_LOCAL_DATA is enabled but no valid local VFS was found, falling back to remote fetch", {
       path: env.DATA_JSON_PATH,
     });
+
+    await cache.del(CACHE_KEY);
+  } else {
+    const cached = await cache.get<FilesData>(CACHE_KEY);
+    if (cached && isLikelyFilesData(cached)) {
+      return cached;
+    }
+
+    if (cached) {
+      log("warn", "Discarding stale files cache payload with non-VFS shape");
+      await cache.del(CACHE_KEY);
+    }
   }
 
   const data: FilesData = {};
@@ -206,13 +205,11 @@ export const fetchFilesData = async (): Promise<FilesData> => {
     for (const repo of repos) {
       const owner = repo.owner?.login ?? repo.full_name.split("/")[0];
       const folderStructure = await fetchFolderStructure(repo.name, "", owner);
-      if (folderStructure) {
-        data[repo.name] = folderStructure;
-      }
+      data[repo.name] = folderStructure && isRecord(folderStructure) ? folderStructure : {};
     }
   }
 
-  if (!env.USE_LOCAL_DATA && env.SAVE_FILE) {
+  if (env.SAVE_FILE) {
     await saveToDataJson(data);
   }
 
