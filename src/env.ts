@@ -28,12 +28,18 @@ export const env = {
   PORT: toNumber(Bun.env.PORT),
   NODE_ENV,
   USERNAME: Bun.env.USERNAME ?? "",
+  GITHUB_API_URL: Bun.env.GITHUB_API_URL ?? "https://api.github.com",
   GITHUB_TOKEN: Bun.env.GITHUB_TOKEN,
   NETLIFY_TOKEN: Bun.env.NETLIFY_TOKEN,
   VERCEL_TOKEN: Bun.env.VERCEL_TOKEN,
   RENDER_TOKEN: Bun.env.RENDER_TOKEN,
+  NETLIFY_API_URL: Bun.env.NETLIFY_API_URL ?? "https://api.netlify.com/api/v1",
+  VERCEL_API_URL: Bun.env.VERCEL_API_URL ?? "https://api.vercel.com",
+  RENDER_API_URL: Bun.env.RENDER_API_URL ?? "https://api.render.com/v1",
   USE_LOCAL_DATA: toBool(Bun.env.USE_LOCAL_DATA, NODE_ENV === "development"),
   SAVE_FILE: toBool(Bun.env.SAVE_FILE, NODE_ENV === "development"),
+  /** When true, file tree stores GitHub links for files; when false, stores content (v1 parity) */
+  ONLY_SAVE_LINKS: toBool(Bun.env.ONLY_SAVE_LINKS, true),
   DATA_JSON_PATH: path.resolve(ROOT_DIR, "data.json"),
 };
 

@@ -1,21 +1,5 @@
 import { Elysia } from "elysia";
-import { env } from "@/env";
-
-type LogLevel = "info" | "error";
-
-const log = (
-  level: LogLevel,
-  message: string,
-  meta?: Record<string, unknown>
-) => {
-  if (env.NODE_ENV === "test") return;
-  const payload = meta ? `${message} ${JSON.stringify(meta)}` : message;
-  if (level === "info") {
-    console.info(payload);
-  } else {
-    console.error(payload);
-  }
-};
+import { log } from "@/utils/logger";
 
 type LoggingContext = {
   startTime: number;

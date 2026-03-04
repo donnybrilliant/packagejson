@@ -10,7 +10,7 @@ import filesRoutes from "./routes/files.js";
 import netlifyRoutes from "./routes/netlify.js";
 import renderRoutes from "./routes/render.js";
 import vercelRoutes from "./routes/vercel.js";
-import npmjsRoutes from "./routes/npmjs.js";
+import npmRoutes from "./routes/npm.js";
 import errorHandler from "./middleware/errorHandler.js";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
@@ -42,7 +42,7 @@ filesRoutes(app);
 netlifyRoutes(app);
 renderRoutes(app);
 vercelRoutes(app);
-npmjsRoutes(app);
+npmRoutes(app);
 
 /**
  * Integrate Swagger after registering other routes
