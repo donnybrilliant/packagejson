@@ -1,66 +1,66 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>packagejson API Tester</title>
-  <link rel="stylesheet" href="./styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>packagejson Explorer</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
-  <div class="container">
-    <header>
-      <h1>packagejson API Terminal</h1>
-      <p class="subtitle">Quick links + live response explorer</p>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>packagejson explorer</h1>
+        <p>Simple JSON explorer for package, repo metadata, and repo file trees.</p>
+      </div>
+      <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">Docs</a>
     </header>
 
-    <nav class="nav-links">
-      <h2>Quick Links</h2>
-      <div class="links-grid">
-        <a href="/package.json" class="nav-link">package.json</a>
-        <a href="/repos" class="nav-link">repos</a>
-        <a href="/files" class="nav-link">files</a>
-        <a href="/npm/elysia" class="nav-link">npm</a>
-        <a href="/netlify" class="nav-link">netlify</a>
-        <a href="/vercel" class="nav-link">vercel</a>
-        <a href="/render" class="nav-link">render</a>
-        <a href="/docs" class="nav-link">docs</a>
+    <section class="panel endpoint-panel">
+      <button type="button" class="endpoint-btn" data-path="/package.json" data-label="package.json">package.json</button>
+      <button type="button" class="endpoint-btn" data-path="/repos?type=public" data-label="repos">repos</button>
+      <button type="button" class="endpoint-btn" data-path="/files?format=terminal" data-label="files">files</button>
+    </section>
+
+    <section class="panel status-panel">
+      <div class="status-item">
+        <span>Selected</span>
+        <strong id="selected-path">none</strong>
       </div>
-    </nav>
-
-    <main>
-      <section class="file-explorer">
-        <div class="explorer-header">
-          <h2>Response Explorer</h2>
-          <span id="selected-path" class="selected-path">No endpoint selected</span>
-        </div>
-
-        <div class="explorer-meta">
-          <span id="status-badge" class="status-badge"></span>
-          <span id="response-time"></span>
-        </div>
-
-        <div class="explorer-shell">
-          <aside class="tree-pane">
-            <div id="tree-root" class="tree-root">
-              <p class="placeholder">Click any quick link to load response files.</p>
-            </div>
-            <div id="recent-links" class="recent-links"></div>
-          </aside>
-
-          <section class="preview-pane">
-            <div id="preview-path" class="preview-path">No file selected</div>
-            <pre id="preview-content" class="preview-content"><code>Select a quick link, then click any node to inspect its value.</code></pre>
-          </section>
-        </div>
-      </section>
-
-      <div class="action-buttons">
-        <button id="reload-btn" class="btn btn-primary" disabled>Reload Selected</button>
-        <button id="clear-btn" class="btn btn-secondary">Clear</button>
+      <div class="status-item">
+        <span>Request</span>
+        <strong id="status-badge" class="badge badge-idle">idle</strong>
+        <small id="response-time">--</small>
       </div>
-    </main>
+      <div class="status-item">
+        <span>Source</span>
+        <strong id="cache-badge" class="badge badge-idle">none</strong>
+        <small id="cache-meta"></small>
+      </div>
+      <div class="status-item">
+        <span>Health</span>
+        <strong id="health-badge" class="badge badge-idle">checking</strong>
+        <small id="health-meta"></small>
+      </div>
+    </section>
+
+    <section class="panel explorer">
+      <div class="toolbar">
+        <button id="reload-btn" class="control-btn" disabled>Reload</button>
+        <button id="clear-btn" class="control-btn">Clear</button>
+      </div>
+
+      <div id="tree-root" class="tree-root">
+        <p class="placeholder">Choose an endpoint.</p>
+      </div>
+
+      <div class="preview">
+        <div id="preview-path" class="preview-path">No file selected</div>
+        <pre id="preview-content" class="preview-content"><code>Click a node to preview.</code></pre>
+      </div>
+    </section>
   </div>
 
   <script type="module" src="./app.js"></script>

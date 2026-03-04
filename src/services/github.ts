@@ -6,7 +6,39 @@ import { log } from "@/utils/logger";
 type GitHubRepo = {
   name: string;
   full_name: string;
-  owner: { login: string };
+  description?: string | null;
+  html_url?: string;
+  homepage?: string | null;
+  language?: string | null;
+  stargazers_count?: number;
+  forks_count?: number;
+  watchers_count?: number;
+  open_issues_count?: number;
+  created_at?: string;
+  updated_at?: string;
+  pushed_at?: string;
+  topics?: string[];
+  license?: {
+    name?: string;
+    spdx_id?: string;
+    url?: string;
+  } | null;
+  has_pages?: boolean;
+  owner: {
+    login: string;
+    avatar_url?: string;
+    html_url?: string;
+  };
+  private?: boolean;
+  archived?: boolean;
+  fork?: boolean;
+  default_branch?: string;
+  size?: number;
+  disabled?: boolean;
+  deployments_url?: string;
+  releases_url?: string;
+  issues_url?: string;
+  pulls_url?: string;
 };
 
 type GitHubContentItem = {
@@ -16,6 +48,143 @@ type GitHubContentItem = {
   size?: number;
   content?: string;
   message?: string;
+};
+
+type TestRepositoryFixture = {
+  repo: GitHubRepo;
+  readme: string;
+  languages: Record<string, number>;
+  packageJson: Record<string, unknown>;
+  deployments: unknown[];
+};
+
+const TEST_REPOSITORIES: TestRepositoryFixture[] = [
+  {
+    repo: {
+      name: "test-repo",
+      full_name: "test-owner/test-repo",
+      description: "TypeScript API for package aggregation",
+      html_url: "https://github.com/test-owner/test-repo",
+      homepage: "https://test-repo.example.com",
+      language: "TypeScript",
+      stargazers_count: 42,
+      forks_count: 7,
+      watchers_count: 12,
+      open_issues_count: 1,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-06-01T00:00:00Z",
+      pushed_at: "2024-06-01T00:00:00Z",
+      topics: ["portfolio", "api"],
+      license: {
+        name: "MIT License",
+        spdx_id: "MIT",
+        url: "https://api.github.com/licenses/mit",
+      },
+      has_pages: true,
+      owner: {
+        login: "test-owner",
+        avatar_url: "https://avatars.githubusercontent.com/u/1?v=4",
+        html_url: "https://github.com/test-owner",
+      },
+      private: false,
+      archived: false,
+      fork: false,
+      default_branch: "main",
+      size: 128,
+      disabled: false,
+      deployments_url: "https://api.github.com/repos/test-owner/test-repo/deployments",
+      releases_url: "https://api.github.com/repos/test-owner/test-repo/releases{/id}",
+      issues_url: "https://api.github.com/repos/test-owner/test-repo/issues{/number}",
+      pulls_url: "https://api.github.com/repos/test-owner/test-repo/pulls{/number}",
+    },
+    readme:
+      "# test-repo\n\nA reference API repository used in tests.\n\nContains package metadata and deployment samples.",
+    languages: {
+      TypeScript: 2048,
+      JavaScript: 256,
+    },
+    packageJson: {
+      name: "@test/test-repo",
+      version: "1.2.3",
+      repository: "https://github.com/test-owner/test-repo",
+    },
+    deployments: [
+      {
+        id: 1001,
+        ref: "main",
+        sha: "abc123",
+        task: "deploy",
+        environment: "production",
+        description: "Production deployment",
+        creator: "test-owner",
+        created_at: "2024-06-01T00:00:00Z",
+        updated_at: "2024-06-01T00:00:00Z",
+        statuses: [
+          {
+            state: "success",
+            description: "Deployment successful",
+            environment: "production",
+            created_at: "2024-06-01T00:00:00Z",
+            target_url: "https://test-repo.example.com",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    repo: {
+      name: "readme-only-repo",
+      full_name: "test-owner/readme-only-repo",
+      description: "Repository with keyword only in README",
+      html_url: "https://github.com/test-owner/readme-only-repo",
+      homepage: null,
+      language: "JavaScript",
+      stargazers_count: 5,
+      forks_count: 1,
+      watchers_count: 2,
+      open_issues_count: 0,
+      created_at: "2024-01-15T00:00:00Z",
+      updated_at: "2024-05-15T00:00:00Z",
+      pushed_at: "2024-05-15T00:00:00Z",
+      topics: ["docs"],
+      license: null,
+      has_pages: false,
+      owner: {
+        login: "test-owner",
+        avatar_url: "https://avatars.githubusercontent.com/u/1?v=4",
+        html_url: "https://github.com/test-owner",
+      },
+      private: false,
+      archived: false,
+      fork: false,
+      default_branch: "main",
+      size: 64,
+      disabled: false,
+      deployments_url: "https://api.github.com/repos/test-owner/readme-only-repo/deployments",
+      releases_url: "https://api.github.com/repos/test-owner/readme-only-repo/releases{/id}",
+      issues_url: "https://api.github.com/repos/test-owner/readme-only-repo/issues{/number}",
+      pulls_url: "https://api.github.com/repos/test-owner/readme-only-repo/pulls{/number}",
+    },
+    readme:
+      "# readme-only-repo\n\nThis README contains the nebula keyword for search tests.",
+    languages: {
+      JavaScript: 1000,
+    },
+    packageJson: {
+      name: "@test/missing-package",
+      version: "0.1.0",
+      repository: "https://github.com/test-owner/readme-only-repo",
+    },
+    deployments: [],
+  },
+];
+
+const getTestRepository = (repoName: string, owner: string): TestRepositoryFixture | null => {
+  return (
+    TEST_REPOSITORIES.find(
+      (fixture) => fixture.repo.name === repoName && fixture.repo.owner.login === owner,
+    ) ?? null
+  );
 };
 
 const IMAGE_EXTENSIONS = [
@@ -53,6 +222,17 @@ const isOtherBinary = (data: GitHubContentItem): boolean => {
  * @returns Promise that resolves to the JSON data, error object, or null
  */
 export const fetchGitHubAPI = async (endpoint: string): Promise<unknown | null> => {
+  if (env.NODE_ENV === "test") {
+    const repoMatch = endpoint.match(/^\/repos\/([^/]+)\/([^/?]+)$/);
+    if (repoMatch) {
+      const [, owner, repoName] = repoMatch;
+      const fixture = getTestRepository(repoName, owner);
+      return fixture?.repo ?? { message: "Not Found" };
+    }
+
+    return null;
+  }
+
   if (!env.GITHUB_TOKEN) {
     log("error", "GITHUB_TOKEN is not configured", { endpoint });
     return null;
@@ -83,6 +263,11 @@ export const fetchGitHubAPI = async (endpoint: string): Promise<unknown | null> 
  * @returns Promise that resolves to an array of repositories or null
  */
 export const getRepositories = async (type: string = "public"): Promise<GitHubRepo[] | null> => {
+  if (env.NODE_ENV === "test") {
+    if (type === "private") return [];
+    return TEST_REPOSITORIES.map((fixture) => fixture.repo);
+  }
+
   const data = await fetchGitHubAPI(`/user/repos?type=${type}&per_page=100&sort=updated`);
   return isArray(data) ? (data as GitHubRepo[]) : null;
 };
@@ -101,6 +286,25 @@ export const fetchFileContent = async (
   owner: string,
   alwaysProvideLink = false,
 ): Promise<string | null> => {
+  if (env.NODE_ENV === "test") {
+    const fixture = getTestRepository(repoName, owner);
+    if (!fixture) return null;
+
+    if (alwaysProvideLink) {
+      return `https://github.com/${owner}/${repoName}/blob/main/${filePath}`;
+    }
+
+    if (filePath === "package.json") {
+      return JSON.stringify(fixture.packageJson);
+    }
+
+    if (filePath.toLowerCase().startsWith("readme")) {
+      return fixture.readme;
+    }
+
+    return null;
+  }
+
   const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/contents/${filePath}`);
 
   if (!isValidGitHubResponse(data) || !isRecord(data)) {
@@ -224,6 +428,11 @@ export const getPackageDetails = async (
  * @returns Promise that resolves to README content or null
  */
 export const fetchReadme = async (repoName: string, owner: string): Promise<string | null> => {
+  if (env.NODE_ENV === "test") {
+    const fixture = getTestRepository(repoName, owner);
+    return fixture?.readme ?? null;
+  }
+
   const readmeFiles = ["README.md", "README.txt", "README", "readme.md", "readme.txt", "readme"];
 
   for (const filename of readmeFiles) {
@@ -245,6 +454,11 @@ export const fetchRepositoryLanguages = async (
   repoName: string,
   owner: string,
 ): Promise<Record<string, number> | null> => {
+  if (env.NODE_ENV === "test") {
+    const fixture = getTestRepository(repoName, owner);
+    return fixture?.languages ?? null;
+  }
+
   const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/languages`);
 
   if (!isValidGitHubResponse(data) || !isRecord(data)) {
@@ -497,6 +711,12 @@ export const fetchDeployments = async (
   owner: string,
   perPage = 10,
 ): Promise<Deployment[] | null> => {
+  if (env.NODE_ENV === "test") {
+    const fixture = getTestRepository(repoName, owner);
+    if (!fixture) return null;
+    return fixture.deployments.slice(0, perPage) as Deployment[];
+  }
+
   const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/deployments?per_page=${perPage}`);
 
   if (!isValidGitHubResponse(data)) {

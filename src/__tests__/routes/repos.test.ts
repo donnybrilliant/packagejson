@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   createRequest,
+  expectJsonContent,
   expectStatus,
   handleRequest,
   parseJson,
@@ -8,174 +9,220 @@ import {
 
 describe("Repos Service", () => {
   describe("GET /repos", () => {
-    test("returns list (test stub)", async () => {
+    test("returns repository collection with pagination metadata", async () => {
       const request = createRequest("/repos", {
         headers: { accept: "application/json" },
       });
       const response = await handleRequest(request);
 
       expectStatus(response, 200);
+      expectJsonContent(response);
+
       const body = await parseJson<{
-        data: unknown[];
-        meta: unknown;
+        data: Array<Record<string, unknown>>;
+        meta: { total: number; limit: number; offset: number; hasMore: boolean };
       }>(response);
-      expect(body).toHaveProperty("data");
-      expect(body).toHaveProperty("meta");
+
       expect(Array.isArray(body.data)).toBe(true);
+      expect(body.meta.total).toBeGreaterThan(0);
+      expect(body.meta.limit).toBe(100);
+      expect(body.meta.offset).toBe(0);
     });
 
-    test("with query parameters", async () => {
-      const request = createRequest(
-        "/repos?sort=stars&order=desc&limit=10&offset=0&fields=name,stars"
-      );
+    test("supports fields selection", async () => {
+      const request = createRequest("/repos?fields=name,stars");
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: Array<Record<string, unknown>> }>(response);
+
+      expect(body.data.length).toBeGreaterThan(0);
+      const first = body.data[0];
+      expect(Object.keys(first)).toEqual(["name", "stars"]);
+    });
+
+    test("supports q search across README and auto-includes enrichment fields", async () => {
+      const request = createRequest("/repos?q=nebula", {
+        headers: { accept: "application/json" },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: Array<Record<string, unknown>> }>(response);
+
+      expect(body.data.length).toBe(1);
+      const repo = body.data[0];
+      expect(repo.name).toBe("readme-only-repo");
+      expect(repo).toHaveProperty("readme");
+      expect(repo).toHaveProperty("languages");
+      expect(repo).toHaveProperty("deployments");
+      expect(repo).toHaveProperty("npm");
+      expect(repo).toHaveProperty("deployment_links");
+    });
+
+    test("uses explicit include list when include is provided", async () => {
+      const request = createRequest("/repos?q=nebula&include=languages", {
+        headers: { accept: "application/json" },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: Array<Record<string, unknown>> }>(response);
+
+      expect(body.data.length).toBe(1);
+      const repo = body.data[0];
+      expect(repo).toHaveProperty("languages");
+      expect(repo).not.toHaveProperty("readme");
+      expect(repo).not.toHaveProperty("deployments");
+      expect(repo).not.toHaveProperty("npm");
+      expect(repo).not.toHaveProperty("deployment_links");
+    });
+
+    test("supports sort and pagination", async () => {
+      const request = createRequest("/repos?sort=stars&limit=1&offset=0");
       const response = await handleRequest(request);
 
       expectStatus(response, 200);
       const body = await parseJson<{
-        data: unknown[];
-        meta: unknown;
+        data: Array<{ name?: string; stars?: number }>;
+        meta: { total: number; limit: number; offset: number; hasMore: boolean };
       }>(response);
-      expect(body).toHaveProperty("data");
-      expect(body).toHaveProperty("meta");
+
+      expect(body.data.length).toBe(1);
+      expect(body.meta.limit).toBe(1);
+      expect(body.meta.offset).toBe(0);
+      expect(typeof body.data[0].stars).toBe("number");
     });
 
-    test("with filter parameter", async () => {
-      const request = createRequest("/repos?filter=language:TypeScript");
-      const response = await handleRequest(request);
+    test("includes cache headers and supports conditional requests", async () => {
+      const first = await handleRequest(createRequest("/repos"));
+      expectStatus(first, 200);
 
-      expectStatus(response, 200);
-      const body = await parseJson<{ data: unknown }>(response);
-      expect(body).toHaveProperty("data");
+      const etag = first.headers.get("etag");
+      expect(etag).toBeTruthy();
+      expect(first.headers.get("cache-control")).toContain("public");
+
+      const second = await handleRequest(
+        createRequest("/repos", {
+          headers: {
+            "if-none-match": etag ?? "",
+          },
+        })
+      );
+
+      expectStatus(second, 304);
     });
   });
 
   describe("GET /repos/:owner/:repo", () => {
-    test("returns 404 for non-existent repo", async () => {
-      const request = createRequest("/repos/test-owner/non-existent-repo", {
+    test("returns detailed repository data with default include set", async () => {
+      const request = createRequest("/repos/test-owner/test-repo", {
         headers: { accept: "application/json" },
       });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: Record<string, unknown> }>(response);
+
+      expect(body.data.name).toBe("test-repo");
+      expect(body.data).toHaveProperty("readme");
+      expect(body.data).toHaveProperty("languages");
+      expect(body.data).toHaveProperty("deployments");
+      expect(body.data).toHaveProperty("npm");
+      expect(body.data).toHaveProperty("deployment_links");
+    });
+
+    test("returns 404 for missing repository", async () => {
+      const request = createRequest("/repos/test-owner/not-found");
       const response = await handleRequest(request);
 
       expectStatus(response, 404);
       const body = await parseJson<{ error: string }>(response);
       expect(body).toHaveProperty("error");
-    });
-
-    test("with include parameter", async () => {
-      const request = createRequest(
-        "/repos/test-owner/test-repo?include=readme,languages,stats"
-      );
-      // Will return 404 in test, but should validate query param handling
-      const response = await handleRequest(request);
-      expectStatus(response, [404, 500]);
     });
   });
 
-  describe("Nested Resources", () => {
-    const nonExistentRepo = "/repos/test-owner/non-existent-repo";
-
-    test("GET /repos/:owner/:repo/readme returns 404", async () => {
-      const request = createRequest(`${nonExistentRepo}/readme`, {
-        headers: { accept: "application/json" },
-      });
-      const response = await handleRequest(request);
-
-      expectStatus(response, 404);
-      const body = await parseJson<{ error: string }>(response);
-      expect(body).toHaveProperty("error");
+  describe("Nested resources", () => {
+    test("GET /repos/:owner/:repo/readme returns README", async () => {
+      const response = await handleRequest(createRequest("/repos/test-owner/test-repo/readme"));
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: { readme: string } }>(response);
+      expect(body.data.readme).toContain("test-repo");
     });
 
-    test("GET /repos/:owner/:repo/languages returns 404", async () => {
-      const request = createRequest(`${nonExistentRepo}/languages`);
-      const response = await handleRequest(request);
-
-      expectStatus(response, 404);
-      const body = await parseJson<{ error: string }>(response);
-      expect(body).toHaveProperty("error");
+    test("GET /repos/:owner/:repo/languages returns language map", async () => {
+      const response = await handleRequest(createRequest("/repos/test-owner/test-repo/languages"));
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: { languages: Record<string, number> } }>(response);
+      expect(body.data.languages).toHaveProperty("TypeScript");
     });
 
-    test("GET /repos/:owner/:repo/stats returns data structure", async () => {
-      const request = createRequest(`${nonExistentRepo}/stats`);
-      const response = await handleRequest(request);
+    test("GET /repos/:owner/:repo/deployments returns github deployments when present", async () => {
+      const response = await handleRequest(
+        createRequest("/repos/test-owner/test-repo/deployments")
+      );
 
-      // Returns 200 with empty/null stats instead of 404
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: { deployments: Array<Record<string, unknown>> } }>(
+        response
+      );
+      expect(body.data.deployments.length).toBeGreaterThan(0);
+      expect(body.data.deployments[0].source).toBe("github");
+    });
+
+    test("GET /repos/:owner/:repo/deployments falls back to external deployments", async () => {
+      const response = await handleRequest(
+        createRequest("/repos/test-owner/readme-only-repo/deployments")
+      );
+
+      expectStatus(response, 200);
+      const body = await parseJson<{ data: { deployments: Array<Record<string, unknown>> } }>(
+        response
+      );
+      expect(body.data.deployments.length).toBeGreaterThan(0);
+      expect(body.data.deployments[0].source).toBe("external");
+    });
+
+    test("GET /repos/:owner/:repo/npm returns exact package lookup info", async () => {
+      const response = await handleRequest(createRequest("/repos/test-owner/test-repo/npm"));
       expectStatus(response, 200);
       const body = await parseJson<{
-        data: { stats: unknown };
+        data: { npm: { package_name: string; npmjs: { exists: boolean } } };
       }>(response);
-      expect(body).toHaveProperty("data");
-      expect(body.data).toHaveProperty("stats");
+      expect(body.data.npm.package_name).toBe("@test/test-repo");
+      expect(body.data.npm.npmjs.exists).toBe(true);
     });
 
-    test("GET /repos/:owner/:repo/releases returns empty array", async () => {
-      const request = createRequest(`${nonExistentRepo}/releases`);
-      const response = await handleRequest(request);
-
-      // Returns 200 with empty array instead of 404
+    test("GET /repos/:owner/:repo/npm returns exists=false for unpublished package", async () => {
+      const response = await handleRequest(
+        createRequest("/repos/test-owner/readme-only-repo/npm")
+      );
       expectStatus(response, 200);
       const body = await parseJson<{
-        data: { releases: unknown[] };
+        data: { npm: { package_name: string; npmjs: { exists: boolean } } };
       }>(response);
-      expect(body).toHaveProperty("data");
-      expect(body.data).toHaveProperty("releases");
-      expect(Array.isArray(body.data.releases)).toBe(true);
+      expect(body.data.npm.package_name).toBe("@test/missing-package");
+      expect(body.data.npm.npmjs.exists).toBe(false);
     });
 
-    test("GET /repos/:owner/:repo/workflows returns 404", async () => {
-      const request = createRequest(`${nonExistentRepo}/workflows`);
-      const response = await handleRequest(request);
+    test("GET /repos/:owner/:repo/deployment-links returns platform links", async () => {
+      const response = await handleRequest(
+        createRequest("/repos/test-owner/readme-only-repo/deployment-links")
+      );
 
-      expectStatus(response, 404);
-      const body = await parseJson<{ error: string }>(response);
-      expect(body).toHaveProperty("error");
-    });
-
-    test("GET /repos/:owner/:repo/workflows/runs returns data", async () => {
-      const request = createRequest(`${nonExistentRepo}/workflows/runs`);
-      const response = await handleRequest(request);
-
-      // Returns 200 with data structure instead of 404
       expectStatus(response, 200);
-      const body = await parseJson<{ data: unknown }>(response);
-      expect(body).toHaveProperty("data");
-    });
+      const body = await parseJson<{
+        data: {
+          deployment_links: {
+            netlify: unknown;
+            vercel: Record<string, unknown> | null;
+            render: unknown;
+          } | null;
+        };
+      }>(response);
 
-    test("GET /repos/:owner/:repo/cicd returns 404", async () => {
-      const request = createRequest(`${nonExistentRepo}/cicd`);
-      const response = await handleRequest(request);
-
-      expectStatus(response, 404);
-      const body = await parseJson<{ error: string }>(response);
-      expect(body).toHaveProperty("error");
-    });
-
-    test("GET /repos/:owner/:repo/deployments returns data", async () => {
-      const request = createRequest(`${nonExistentRepo}/deployments`);
-      const response = await handleRequest(request);
-
-      // Returns 200 with data structure instead of 404
-      expectStatus(response, 200);
-      const body = await parseJson<{ data: unknown }>(response);
-      expect(body).toHaveProperty("data");
-    });
-
-    test("GET /repos/:owner/:repo/npm returns 404", async () => {
-      const request = createRequest(`${nonExistentRepo}/npm`);
-      const response = await handleRequest(request);
-
-      expectStatus(response, 404);
-      const body = await parseJson<{ error: string }>(response);
-      expect(body).toHaveProperty("error");
-    });
-
-    test("GET /repos/:owner/:repo/deployment-links returns 404", async () => {
-      const request = createRequest(`${nonExistentRepo}/deployment-links`);
-      const response = await handleRequest(request);
-
-      expectStatus(response, 404);
-      const body = await parseJson<{ error: string }>(response);
-      expect(body).toHaveProperty("error");
+      expect(body.data.deployment_links).not.toBeNull();
+      expect(body.data.deployment_links?.vercel).not.toBeNull();
     });
   });
 });
-

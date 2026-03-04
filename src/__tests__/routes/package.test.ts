@@ -50,6 +50,25 @@ describe("Package Service", () => {
       expect(body).toHaveProperty("dependencies");
       expect(body).toHaveProperty("devDependencies");
     });
+
+    test("includes cache headers and supports conditional requests", async () => {
+      const first = await handleRequest(createRequest("/package.json"));
+      expectStatus(first, 200);
+
+      const etag = first.headers.get("etag");
+      expect(etag).toBeTruthy();
+      expect(first.headers.get("cache-control")).toContain("public");
+
+      const second = await handleRequest(
+        createRequest("/package.json", {
+          headers: {
+            "if-none-match": etag ?? "",
+          },
+        })
+      );
+
+      expectStatus(second, 304);
+    });
   });
 
   describe("GET /package.json/refresh", () => {
@@ -70,4 +89,3 @@ describe("Package Service", () => {
     });
   });
 });
-

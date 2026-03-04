@@ -1,109 +1,62 @@
 # Test Structure
 
-This directory contains all tests for the packagejson API, organized following best practices.
+This test suite validates the simplified core API contract and supporting helpers.
 
 ## Structure
 
 ```
 src/__tests__/
+├── env.test.ts
 ├── helpers/
-│   ├── test-utils.ts    # Shared test utilities and helpers
-│   └── fixtures.ts      # Test data and mock fixtures
-└── routes/
-    ├── root.test.ts           # Root routes (/, /docs, /health)
-    ├── deployments.test.ts    # Netlify, Vercel, Render endpoints
-    ├── npm.test.ts            # NPM package endpoints
-    ├── package.test.ts        # Package.json aggregation endpoints
-    ├── files.test.ts          # File structure endpoints
-    └── repos.test.ts          # GitHub repository endpoints
+│   ├── fixtures.ts
+│   └── test-utils.ts
+├── routes/
+│   ├── root.test.ts          # /, /docs, /health, 404, CORS
+│   ├── package.test.ts       # /package.json, /package.json/refresh
+│   ├── files.test.ts         # /files, /files?format=terminal, /files/*
+│   ├── repos.test.ts         # /repos and nested repo resources
+│   ├── security.test.ts      # API key auth + rate limiting behavior
+│   ├── security-contract.test.ts # full createApp() auth contract under production env
+│   ├── deployments.test.ts   # removed deployment routes => strict 404
+│   └── npm.test.ts           # removed standalone npm routes => strict 404
+├── services/
+│   ├── cache.test.ts
+│   ├── files.test.ts
+│   ├── repos-helpers.test.ts
+│   └── security.test.ts
+├── utils/
+│   └── github.test.ts
+└── semver.test.ts
 ```
 
-## Test Organization
+## Coverage focus
 
-### By Feature/Service
-Tests are organized by service/feature area:
-- **Root routes**: Basic app routes (/, /docs, /health, 404)
-- **Deployments**: Netlify, Vercel, Render services
-- **NPM**: Package search, downloads, versions
-- **Package**: Aggregated package.json data
-- **Files**: Repository file structure navigation
-- **Repos**: GitHub repository data and nested resources
+- Route contracts are deterministic: no permissive `200 or 500` assertions.
+- Core `/repos` behavior: query search, include defaults, enrichment, pagination, field selection.
+- Core `/files` behavior: default v1 object tree + terminal `FileSystemItem` mode.
+- Security behavior:
+  - protected vs public route access
+  - bearer and optional `x-api-key` fallback
+  - preflight (`OPTIONS`) bypass
+  - route-scoped rate limiting
+- HTTP caching behavior:
+  - `Cache-Control` + `ETag` headers on core JSON routes
+  - conditional GET returning `304` on matching `If-None-Match`
+- Persistence behavior:
+  - generic cache persistence in development (`data.json.cache`) + rehydration
+  - VFS resolution from `data.json.vfs` and legacy fallback
+- Removed route surface returns strict `404`.
 
-### Test Utilities (`helpers/test-utils.ts`)
-
-Reusable utilities for all tests:
-- `createRequest()` - Creates test requests with optional headers
-- `handleRequest()` - Handles requests through the app
-- `expectStatus()` - Asserts response status codes
-- `expectJsonContent()` - Asserts JSON content type
-- `expectHtmlContent()` - Asserts HTML content type
-- `parseJson()` - Parses JSON responses with type safety
-- `parseText()` - Parses text responses
-
-### Test Fixtures (`helpers/fixtures.ts`)
-
-Shared test data:
-- `testRepos` - Mock repository data
-- `testFilesData` - Mock file structure data
-- `testPackageData` - Mock package.json data
-- `testNpmPackage` - Mock NPM package data
-
-## Running Tests
+## Running tests
 
 ```bash
-# Run all tests
 bun test
-
-# Run specific test file
-bun test src/__tests__/routes/npm.test.ts
-
-# Run with coverage (if available)
-bun test --coverage
+bun test src/__tests__/routes/security.test.ts
 ```
 
-## Test Patterns
+## Adding tests
 
-### Using describe blocks
-Tests are grouped using `describe()` blocks for better organization:
-```typescript
-describe("Service Name", () => {
-  describe("GET /endpoint", () => {
-    test("should return data", async () => {
-      // test implementation
-    });
-  });
-});
-```
-
-### Type-safe assertions
-All JSON parsing uses TypeScript generics for type safety:
-```typescript
-const body = await parseJson<{ data: { name: string } }>(response);
-expect(body.data.name).toBe("expected");
-```
-
-### Status code validation
-Use `expectStatus()` for flexible status code checking:
-```typescript
-expectStatus(response, 200);           // Exact match
-expectStatus(response, [404, 500]);     // Multiple valid options
-```
-
-## Best Practices
-
-1. **Group related tests** using `describe()` blocks
-2. **Use shared utilities** from `test-utils.ts` for consistency
-3. **Type all responses** using TypeScript generics
-4. **Test both success and error cases**
-5. **Test query parameters** and edge cases
-6. **Keep tests focused** - one assertion per test when possible
-7. **Use descriptive test names** that explain what is being tested
-
-## Adding New Tests
-
-1. Create a new test file in `routes/` if testing a new service
-2. Import utilities from `helpers/test-utils.ts`
-3. Use fixtures from `helpers/fixtures.ts` when appropriate
-4. Follow the existing patterns and structure
-5. Ensure all tests pass and type checking succeeds
-
+1. Add route-level tests for API contracts and status/body shape.
+2. Add service/helper tests for parsing, matching, filtering, and edge cases.
+3. Prefer exact status assertions and explicit payload assertions.
+4. Run `bun test`, `bun run lint`, and `bun run typecheck` before merging.

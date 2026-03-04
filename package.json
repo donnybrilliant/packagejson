@@ -11,9 +11,12 @@
     "typecheck": "bun x tsc --noEmit"
   },
   "dependencies": {
+    "@elysiajs/bearer": "^1.4.3",
+    "@elysiajs/cors": "^1.4.1",
     "@elysiajs/openapi": "latest",
     "@elysiajs/static": "latest",
-    "elysia": "latest"
+    "elysia": "latest",
+    "elysia-rate-limit": "^4.5.0"
   },
   "devDependencies": {
     "@biomejs/biome": "latest",

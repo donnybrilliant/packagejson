@@ -1,7 +1,16 @@
 import { cache } from "@/cache";
 import { CACHE_TTLS } from "@/env";
-import { getErrorMessage } from "@/utils/errors";
+import { getErrorMessage, isRecord } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import { getNetlify, getRender, getVercel } from "@/services/deployments";
+import {
+  fetchDeployments,
+  fetchFileContent,
+  fetchGitHubAPI,
+  fetchReadme,
+  fetchRepositoryLanguages,
+} from "@/services/github";
+import { getNpmPackage } from "@/services/npm";
 
 export type GitHubRepo = {
   name: string;
@@ -41,80 +50,52 @@ export type GitHubRepo = {
   pulls_url: string;
 };
 
-import { getNetlify, getRender, getVercel } from "@/services/deployments";
-import {
-  fetchCICDStatus,
-  fetchCodeFrequency,
-  fetchCommitActivity,
-  fetchContributorStats,
-  fetchDeployments,
-  fetchFileContent,
-  fetchGitHubAPI,
-  fetchParticipation,
-  fetchReadme,
-  fetchReleases,
-  fetchRepositoryLanguages,
-  fetchWorkflowRuns,
-  fetchWorkflows,
-} from "@/services/github";
-import { getNpmPackage } from "@/services/npm";
-
-/**
- * Options for fetching enhanced repository data
- */
 type EnhancedRepoOptions = {
   includeReadme?: boolean;
   includeLanguages?: boolean;
-  includeStats?: boolean;
-  includeReleases?: boolean;
-  includeWorkflows?: boolean;
-  includeCICD?: boolean;
   includeDeployments?: boolean;
   includeNpm?: boolean;
   includeDeploymentLinks?: boolean;
 };
 
-// Helper functions
+type DeploymentLinks = {
+  netlify: Record<string, unknown> | null;
+  vercel: Record<string, unknown> | null;
+  render: Record<string, unknown> | null;
+};
 
-/**
- * Parses a comma-separated string into an array of trimmed strings
- * @param str - Comma-separated string (e.g., "readme,languages,stats")
- * @returns Array of trimmed, non-empty strings
- */
+export const DEFAULT_SEARCH_INCLUDE = [
+  "readme",
+  "languages",
+  "deployments",
+  "npm",
+  "deployment-links",
+] as const;
+
 export const parseCommaSeparatedList = (str: string | undefined): string[] => {
   if (!str || typeof str !== "string") return [];
   return str
     .split(",")
-    .map((s) => s.trim())
+    .map((segment) => segment.trim())
     .filter(Boolean);
 };
 
-/**
- * Selects specific fields from an object
- * @param obj - Source object
- * @param fields - Array of field names to select
- * @returns Object with only selected fields, or original object if fields array is empty
- */
 export const selectFields = <T extends Record<string, unknown>>(
   obj: T,
   fields: string[]
 ): Partial<T> => {
   if (!fields || fields.length === 0) return obj;
   const result: Partial<T> = {};
+
   for (const field of fields) {
     if (field in obj) {
-      result[field as keyof T] = obj[field] as T[keyof T];
+      result[field as keyof T] = obj[field as keyof T];
     }
   }
+
   return result;
 };
 
-/**
- * Sorts repositories by specified field
- * @param repos - Array of repositories to sort
- * @param sortBy - Sort field: "stars", "name", or "updated" (default)
- * @returns New sorted array
- */
 export const sortRepos = <
   T extends { name?: string; stars?: number; updated_at?: string }
 >(
@@ -122,59 +103,47 @@ export const sortRepos = <
   sortBy: string
 ): T[] => {
   const sorted = [...repos];
+
   switch (sortBy) {
     case "stars":
-      return sorted.sort((a, b) => (b.stars ?? 0) - (a.stars ?? 0));
+      return sorted.sort((left, right) => (right.stars ?? 0) - (left.stars ?? 0));
     case "name":
-      return sorted.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+      return sorted.sort((left, right) => (left.name ?? "").localeCompare(right.name ?? ""));
     default:
       return sorted.sort(
-        (a, b) =>
-          new Date(b.updated_at ?? 0).getTime() -
-          new Date(a.updated_at ?? 0).getTime()
+        (left, right) =>
+          new Date(right.updated_at ?? 0).getTime() -
+          new Date(left.updated_at ?? 0).getTime()
       );
   }
 };
 
-/**
- * Paginates an array with metadata
- * @param array - Array to paginate
- * @param limit - Number of items per page (minimum 1)
- * @param offset - Starting offset (minimum 0)
- * @returns Object with paginated data and metadata
- */
 export const paginate = <T>(
-  array: T[],
+  data: T[],
   limit: number,
   offset: number
 ): {
   data: T[];
   meta: { total: number; limit: number; offset: number; hasMore: boolean };
 } => {
-  const total = array.length;
-  const limitNum = Math.max(1, limit || 100);
-  const offsetNum = Math.max(0, offset || 0);
-  const data = array.slice(offsetNum, offsetNum + limitNum);
+  const total = data.length;
+  const safeLimit = Math.max(1, limit || 100);
+  const safeOffset = Math.max(0, offset || 0);
 
   return {
-    data,
+    data: data.slice(safeOffset, safeOffset + safeLimit),
     meta: {
       total,
-      limit: limitNum,
-      offset: offsetNum,
-      hasMore: offsetNum + limitNum < total,
+      limit: safeLimit,
+      offset: safeOffset,
+      hasMore: safeOffset + safeLimit < total,
     },
   };
 };
 
-/**
- * Formats basic repository data from GitHub API response
- * Transforms GitHub API format to our standard format
- * @param repo - Repository object from GitHub API
- * @returns Formatted repository object
- */
 export const formatBasicRepo = (repo: GitHubRepo): Record<string, unknown> => {
   const owner = repo.owner?.login ?? repo.full_name.split("/")[0];
+
   return {
     name: repo.name,
     full_name: repo.full_name,
@@ -198,9 +167,7 @@ export const formatBasicRepo = (repo: GitHubRepo): Record<string, unknown> => {
         }
       : null,
     has_pages: repo.has_pages,
-    pages_url: repo.has_pages
-      ? `https://${owner}.github.io/${repo.name}`
-      : null,
+    pages_url: repo.has_pages ? `https://${owner}.github.io/${repo.name}` : null,
     owner: {
       login: repo.owner.login,
       avatar_url: repo.owner.avatar_url,
@@ -212,41 +179,105 @@ export const formatBasicRepo = (repo: GitHubRepo): Record<string, unknown> => {
   };
 };
 
-/**
- * Converts include list to options object for fetchEnhancedRepositoryData
- * @param includeList - Array of field names to include
- * @returns Options object with boolean flags for each field
- */
 export const convertIncludeListToOptions = (
   includeList: string[]
 ): EnhancedRepoOptions => {
   return {
     includeReadme: includeList.includes("readme"),
     includeLanguages: includeList.includes("languages"),
-    includeStats: includeList.includes("stats"),
-    includeReleases: includeList.includes("releases"),
-    includeWorkflows: includeList.includes("workflows"),
-    includeCICD: includeList.includes("cicd"),
     includeDeployments: includeList.includes("deployments"),
     includeNpm: includeList.includes("npm"),
     includeDeploymentLinks: includeList.includes("deployment-links"),
   };
 };
 
-/**
- * Parses repository URL in various formats to extract owner and name
- * Supports: https://github.com/owner/repo, git@github.com:owner/repo.git, owner/repo
- * @param repoUrl - Repository URL in various formats
- * @returns Object with owner and name, or null if not parseable
- */
-const parseRepoUrl = (
-  repoUrl: string
-): { owner: string; name: string } | null => {
+export const matchesRepoQuery = (
+  repo: {
+    name?: unknown;
+    full_name?: unknown;
+    description?: unknown;
+    topics?: unknown;
+  },
+  query: string
+): boolean => {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+
+  const topics = Array.isArray(repo.topics)
+    ? repo.topics.map((topic) => String(topic)).join(" ")
+    : "";
+
+  const haystack = [
+    typeof repo.name === "string" ? repo.name : "",
+    typeof repo.full_name === "string" ? repo.full_name : "",
+    typeof repo.description === "string" ? repo.description : "",
+    topics,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(needle);
+};
+
+export const filterReposByQuery = async <
+  T extends {
+    name?: string;
+    full_name?: string;
+    description?: string | null;
+    topics?: unknown;
+    owner?: { login?: string };
+  }
+>(
+  repos: T[],
+  query: string
+): Promise<T[]> => {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return repos;
+
+  const directMatches = new Set<string>();
+  const readmeCandidates: T[] = [];
+
+  for (const repo of repos) {
+    const key = repo.full_name ?? `${repo.owner?.login ?? ""}/${repo.name ?? ""}`;
+    if (matchesRepoQuery(repo, needle)) {
+      directMatches.add(key);
+    } else {
+      readmeCandidates.push(repo);
+    }
+  }
+
+  const readmeResults = await Promise.all(
+    readmeCandidates.map(async (repo) => {
+      const owner = repo.owner?.login;
+      const name = repo.name;
+      if (!owner || !name) return null;
+
+      const readme = await fetchReadme(name, owner);
+      if (!readme || !readme.toLowerCase().includes(needle)) {
+        return null;
+      }
+
+      return repo.full_name ?? `${owner}/${name}`;
+    })
+  );
+
+  for (const key of readmeResults) {
+    if (key) {
+      directMatches.add(key);
+    }
+  }
+
+  return repos.filter((repo) => {
+    const key = repo.full_name ?? `${repo.owner?.login ?? ""}/${repo.name ?? ""}`;
+    return directMatches.has(key);
+  });
+};
+
+const parseRepoUrl = (repoUrl: string): { owner: string; name: string } | null => {
   if (!repoUrl || typeof repoUrl !== "string") {
     return null;
   }
 
-  // Handle different URL formats
   let match = repoUrl.match(
     /(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+)\/([^/.]+)(?:\.git)?/
   );
@@ -254,13 +285,11 @@ const parseRepoUrl = (
     return { owner: match[1], name: match[2] };
   }
 
-  // Try git@ format
   match = repoUrl.match(/git@github\.com:([^/]+)\/([^/.]+)(?:\.git)?/);
   if (match) {
     return { owner: match[1], name: match[2] };
   }
 
-  // Try owner/repo format
   match = repoUrl.match(/^([^/]+)\/([^/]+)$/);
   if (match) {
     return { owner: match[1], name: match[2] };
@@ -269,34 +298,25 @@ const parseRepoUrl = (
   return null;
 };
 
-/**
- * Fetches NPM package information for a repository
- * Extracts package name from package.json and checks npmjs registry
- * Also detects GitHub Actions workflows that publish to npm
- * @param repoName - Repository name
- * @param owner - Repository owner (username or organization)
- * @returns Promise that resolves to NPM package info or null
- */
 export const fetchNpmPackageInfo = async (
   repoName: string,
   owner: string
-): Promise<unknown | null> => {
+): Promise<Record<string, unknown> | null> => {
   try {
-    log("debug", "Fetching NPM package info", { repoName, owner });
-    const packageJsonContent = await fetchFileContent(
-      repoName,
-      "package.json",
-      owner,
-      false
-    );
+    const packageJsonContent = await fetchFileContent(repoName, "package.json", owner, false);
 
     if (!packageJsonContent || typeof packageJsonContent !== "string") {
       return null;
     }
 
     let packageJson: { name?: string; version?: string; repository?: unknown };
+
     try {
-      packageJson = JSON.parse(packageJsonContent);
+      packageJson = JSON.parse(packageJsonContent) as {
+        name?: string;
+        version?: string;
+        repository?: unknown;
+      };
     } catch {
       return null;
     }
@@ -305,78 +325,22 @@ export const fetchNpmPackageInfo = async (
       return null;
     }
 
-    const packageName = packageJson.name;
+    const npmPackageInfo = await getNpmPackage(packageJson.name, false);
 
-    // Check for GitHub Actions workflows that might publish to npm
-    const workflows = await fetchWorkflows(repoName, owner);
-    let hasNpmPublishWorkflow = false;
-    let npmPublishWorkflow: unknown = null;
-
-    if (workflows && Array.isArray(workflows)) {
-      for (const workflow of workflows) {
-        const wf = workflow as {
-          path?: string;
-          id?: number;
-          name?: string;
-          state?: string;
-          html_url?: string;
-        };
-        const workflowPath = wf.path;
-        if (workflowPath?.includes(".github/workflows")) {
-          const workflowContent = await fetchFileContent(
-            repoName,
-            workflowPath,
-            owner,
-            false
-          );
-
-          if (
-            workflowContent &&
-            typeof workflowContent === "string" &&
-            (workflowContent.includes("npm publish") ||
-              workflowContent.includes("publish-to-npm") ||
-              workflowContent.includes("npmjs.com") ||
-              workflowContent.includes("actions/setup-node") ||
-              workflowContent.includes("publish"))
-          ) {
-            hasNpmPublishWorkflow = true;
-            npmPublishWorkflow = {
-              id: wf.id,
-              name: wf.name,
-              path: wf.path,
-              state: wf.state,
-              html_url: wf.html_url,
-            };
-            break;
+    return {
+      package_name: packageJson.name,
+      version: packageJson.version ?? null,
+      npm_link: `https://www.npmjs.com/package/${packageJson.name}`,
+      repository: packageJson.repository ?? null,
+      npmjs: npmPackageInfo
+        ? {
+            ...npmPackageInfo,
+            exists: true,
           }
-        }
-      }
-    }
-
-    // Fetch package information from npmjs API
-    const npmPackageInfo = await getNpmPackage(packageName, false);
-
-    const result: Record<string, unknown> = {
-      package_name: packageName,
-      version: packageJson.version || null,
-      npm_link: `https://www.npmjs.com/package/${packageName}`,
-      has_npm_publish_workflow: hasNpmPublishWorkflow,
-      npm_publish_workflow: npmPublishWorkflow,
-      repository: packageJson.repository || null,
+        : {
+            exists: false,
+          },
     };
-
-    if (npmPackageInfo) {
-      result.npmjs = {
-        ...npmPackageInfo,
-        exists: true,
-      };
-    } else {
-      result.npmjs = {
-        exists: false,
-      };
-    }
-
-    return result;
   } catch (error) {
     log("error", "Error in fetchNpmPackageInfo", {
       repoName,
@@ -390,17 +354,16 @@ export const fetchNpmPackageInfo = async (
 export const fetchDeploymentLinks = async (
   repoName: string,
   owner: string
-): Promise<unknown | null> => {
+): Promise<DeploymentLinks | null> => {
   try {
-    // Cache key for deployment platforms data
-    const CACHE_KEY = "deploymentPlatforms";
-    let platformsData = await cache.get<{
-      netlify: unknown[];
-      vercel: unknown[];
-      render: unknown[];
-    }>(CACHE_KEY);
+    const cacheKey = "deployment-platforms";
 
-    // Fetch all platforms if not cached
+    let platformsData = await cache.get<{
+      netlify: Record<string, unknown>[];
+      vercel: Record<string, unknown>[];
+      render: Record<string, unknown>[];
+    }>(cacheKey);
+
     if (!platformsData) {
       const [netlifyResult, vercelResult, renderResult] = await Promise.all([
         getNetlify(),
@@ -408,103 +371,79 @@ export const fetchDeploymentLinks = async (
         getRender(),
       ]);
 
-      const netlifySites =
-        netlifyResult?.configured && netlifyResult.data
-          ? netlifyResult.data
-          : [];
-      const vercelSites =
-        vercelResult?.configured && vercelResult.data ? vercelResult.data : [];
-      const renderSites =
-        renderResult?.configured && renderResult.data ? renderResult.data : [];
-
       platformsData = {
-        netlify: Array.isArray(netlifySites) ? netlifySites : [],
-        vercel: Array.isArray(vercelSites) ? vercelSites : [],
-        render: Array.isArray(renderSites) ? renderSites : [],
+        netlify:
+          netlifyResult.configured && Array.isArray(netlifyResult.data)
+            ? (netlifyResult.data as Record<string, unknown>[])
+            : [],
+        vercel:
+          vercelResult.configured && Array.isArray(vercelResult.data)
+            ? (vercelResult.data as Record<string, unknown>[])
+            : [],
+        render:
+          renderResult.configured && Array.isArray(renderResult.data)
+            ? (renderResult.data as Record<string, unknown>[])
+            : [],
       };
 
-      await cache.set(CACHE_KEY, platformsData, CACHE_TTLS.medium);
+      await cache.set(cacheKey, platformsData, CACHE_TTLS.medium);
     }
 
-    const deployments: {
-      netlify: unknown;
-      vercel: unknown;
-      render: unknown;
-    } = {
+    const deploymentLinks: DeploymentLinks = {
       netlify: null,
       vercel: null,
       render: null,
     };
 
-    // Match Netlify deployments
-    if (Array.isArray(platformsData.netlify)) {
-      for (const site of platformsData.netlify) {
-        const s = site as {
-          repo?: string;
-          name?: string;
-          ssl_url?: string;
-          url?: string;
+    for (const site of platformsData.netlify) {
+      const repo = site.repo;
+      if (typeof repo !== "string") continue;
+
+      const parsed = parseRepoUrl(repo);
+      if (parsed && parsed.owner === owner && parsed.name === repoName) {
+        deploymentLinks.netlify = {
+          name: site.name ?? null,
+          url: site.ssl_url ?? site.url ?? null,
+          repo,
         };
-        if (s.repo) {
-          const parsed = parseRepoUrl(s.repo);
-          if (parsed && parsed.owner === owner && parsed.name === repoName) {
-            deployments.netlify = {
-              name: s.name,
-              url: s.ssl_url || s.url,
-              repo: s.repo,
-            };
-            break;
-          }
-        }
+        break;
       }
     }
 
-    // Match Vercel deployments
-    if (Array.isArray(platformsData.vercel)) {
-      for (const site of platformsData.vercel) {
-        const s = site as {
-          repo?: string;
-          name?: string;
-          url?: string;
-          framework?: string;
+    for (const site of platformsData.vercel) {
+      const repo = site.repo;
+      if (typeof repo !== "string") continue;
+
+      const parsed = parseRepoUrl(repo);
+      if (parsed && parsed.owner === owner && parsed.name === repoName) {
+        deploymentLinks.vercel = {
+          name: site.name ?? null,
+          url: site.url ?? null,
+          repo,
+          framework: site.framework ?? null,
         };
-        if (s.repo) {
-          const parsed = parseRepoUrl(s.repo);
-          if (parsed && parsed.owner === owner && parsed.name === repoName) {
-            deployments.vercel = {
-              name: s.name,
-              url: s.url,
-              repo: s.repo,
-              framework: s.framework,
-            };
-            break;
-          }
-        }
+        break;
       }
     }
 
-    // Match Render deployments
-    if (Array.isArray(platformsData.render)) {
-      for (const site of platformsData.render) {
-        const s = site as { repo?: string; name?: string; url?: string };
-        if (s.repo) {
-          const parsed = parseRepoUrl(s.repo);
-          if (parsed && parsed.owner === owner && parsed.name === repoName) {
-            deployments.render = {
-              name: s.name,
-              url: s.url,
-              repo: s.repo,
-            };
-            break;
-          }
-        }
+    for (const site of platformsData.render) {
+      const repo = site.repo;
+      if (typeof repo !== "string") continue;
+
+      const parsed = parseRepoUrl(repo);
+      if (parsed && parsed.owner === owner && parsed.name === repoName) {
+        deploymentLinks.render = {
+          name: site.name ?? null,
+          url: site.url ?? null,
+          repo,
+        };
+        break;
       }
     }
 
-    const hasDeployments =
-      deployments.netlify || deployments.vercel || deployments.render;
-
-    return hasDeployments ? deployments : null;
+    return deploymentLinks.netlify || deploymentLinks.vercel || deploymentLinks.render
+      ? deploymentLinks
+      : null;
   } catch (error) {
     log("error", "Error in fetchDeploymentLinks", {
       repoName,
@@ -515,36 +454,69 @@ export const fetchDeploymentLinks = async (
   }
 };
 
+const deploymentLinksToArray = (links: DeploymentLinks): Record<string, unknown>[] => {
+  const result: Record<string, unknown>[] = [];
+
+  if (links.netlify) {
+    result.push({ platform: "netlify", source: "external", ...links.netlify });
+  }
+
+  if (links.vercel) {
+    result.push({ platform: "vercel", source: "external", ...links.vercel });
+  }
+
+  if (links.render) {
+    result.push({ platform: "render", source: "external", ...links.render });
+  }
+
+  return result;
+};
+
+export const fetchRepositoryDeploymentsWithFallback = async (
+  repoName: string,
+  owner: string
+): Promise<Record<string, unknown>[]> => {
+  const githubDeployments = await fetchDeployments(repoName, owner);
+
+  if (Array.isArray(githubDeployments) && githubDeployments.length > 0) {
+    return githubDeployments.map((deployment) => ({
+      ...(isRecord(deployment) ? deployment : { value: deployment }),
+      source: "github",
+    }));
+  }
+
+  const deploymentLinks = await fetchDeploymentLinks(repoName, owner);
+  if (!deploymentLinks) {
+    return [];
+  }
+
+  return deploymentLinksToArray(deploymentLinks);
+};
+
 export const fetchEnhancedRepositoryData = async (
   repoName: string,
   owner: string,
   options: EnhancedRepoOptions = {}
-): Promise<unknown | null> => {
+): Promise<Record<string, unknown> | null> => {
   const {
     includeReadme = true,
     includeLanguages = true,
-    includeStats = true,
-    includeReleases = true,
-    includeWorkflows = true,
-    includeCICD = true,
     includeDeployments = true,
     includeNpm = true,
     includeDeploymentLinks = true,
   } = options;
 
-  // Fetch base repository data
   const repoData = (await fetchGitHubAPI(`/repos/${owner}/${repoName}`)) as
     | GitHubRepo
     | { message?: string }
     | null;
 
-  if (!repoData || (typeof repoData === "object" && "message" in repoData)) {
+  if (!repoData || (isRecord(repoData) && "message" in repoData)) {
     return null;
   }
 
   const repo = repoData as GitHubRepo;
 
-  // Build enhanced data object
   const enhancedData: Record<string, unknown> = {
     name: repo.name,
     full_name: repo.full_name,
@@ -587,13 +559,10 @@ export const fetchEnhancedRepositoryData = async (
     pulls_url: repo.pulls_url,
   };
 
-  // Fetch additional data in parallel
   const additionalDataPromises: Promise<Record<string, unknown>>[] = [];
 
   if (includeReadme) {
-    additionalDataPromises.push(
-      fetchReadme(repoName, owner).then((readme) => ({ readme }))
-    );
+    additionalDataPromises.push(fetchReadme(repoName, owner).then((readme) => ({ readme })));
   }
 
   if (includeLanguages) {
@@ -604,66 +573,16 @@ export const fetchEnhancedRepositoryData = async (
     );
   }
 
-  if (includeStats) {
-    additionalDataPromises.push(
-      Promise.all([
-        fetchCommitActivity(repoName, owner),
-        fetchContributorStats(repoName, owner),
-        fetchCodeFrequency(repoName, owner),
-        fetchParticipation(repoName, owner),
-      ]).then(
-        ([commitActivity, contributors, codeFrequency, participation]) => ({
-          stats: {
-            commit_activity: commitActivity,
-            contributors: contributors,
-            code_frequency: codeFrequency,
-            participation: participation,
-          },
-        })
-      )
-    );
-  }
-
-  if (includeReleases) {
-    additionalDataPromises.push(
-      fetchReleases(repoName, owner).then((releases) => ({ releases }))
-    );
-  }
-
-  if (includeWorkflows) {
-    additionalDataPromises.push(
-      Promise.all([
-        fetchWorkflows(repoName, owner),
-        fetchWorkflowRuns(repoName, owner),
-      ]).then(([workflows, workflowRuns]) => ({
-        workflows: workflows,
-        workflow_runs: workflowRuns,
-      }))
-    );
-  }
-
-  if (includeCICD) {
-    additionalDataPromises.push(
-      fetchCICDStatus(repoName, owner).then((cicdStatus) => ({
-        cicd_status: cicdStatus,
-      }))
-    );
-  }
-
   if (includeDeployments) {
     additionalDataPromises.push(
-      fetchDeployments(repoName, owner).then((deployments) => ({
-        deployments: deployments,
+      fetchRepositoryDeploymentsWithFallback(repoName, owner).then((deployments) => ({
+        deployments,
       }))
     );
   }
 
   if (includeNpm) {
-    additionalDataPromises.push(
-      fetchNpmPackageInfo(repoName, owner).then((npmInfo) => ({
-        npm: npmInfo,
-      }))
-    );
+    additionalDataPromises.push(fetchNpmPackageInfo(repoName, owner).then((npm) => ({ npm })));
   }
 
   if (includeDeploymentLinks) {
@@ -674,12 +593,9 @@ export const fetchEnhancedRepositoryData = async (
     );
   }
 
-  // Wait for all additional data
   const additionalData = await Promise.all(additionalDataPromises);
-
-  // Merge additional data into enhanced data
-  for (const data of additionalData) {
-    Object.assign(enhancedData, data);
+  for (const payload of additionalData) {
+    Object.assign(enhancedData, payload);
   }
 
   return enhancedData;

@@ -142,19 +142,16 @@ describe("Repos helper functions", () => {
     const options = convertIncludeListToOptions([
       "readme",
       "languages",
-      "cicd",
+      "deployments",
+      "npm",
       "deployment-links",
     ]);
 
     expect(options).toEqual({
       includeReadme: true,
       includeLanguages: true,
-      includeStats: false,
-      includeReleases: false,
-      includeWorkflows: false,
-      includeCICD: true,
-      includeDeployments: false,
-      includeNpm: false,
+      includeDeployments: true,
+      includeNpm: true,
       includeDeploymentLinks: true,
     });
   });

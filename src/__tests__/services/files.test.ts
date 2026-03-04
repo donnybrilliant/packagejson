@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getFileAtPath } from "@/services/files";
+import { getFileAtPath, resolveFilesDataFromDataStore } from "@/services/files";
 
 describe("Files service helpers", () => {
   const filesData = {
@@ -43,5 +43,46 @@ describe("Files service helpers", () => {
       "subpath",
     ]);
     expect(result).toBeNull();
+  });
+
+  test("resolves VFS from namespaced data.json.vfs", () => {
+    const resolved = resolveFilesDataFromDataStore({
+      cache: {
+        files: { value: { ignored: true } },
+      },
+      vfs: filesData,
+    });
+
+    expect(resolved).toEqual(filesData);
+  });
+
+  test("falls back to legacy root VFS shape when vfs namespace is absent", () => {
+    const legacyData = {
+      "repo-legacy": {
+        "README.md": "legacy readme",
+      },
+    };
+
+    const resolved = resolveFilesDataFromDataStore(legacyData);
+    expect(resolved).toEqual(legacyData);
+  });
+
+  test("returns null when store only contains namespaces without VFS payload", () => {
+    const resolved = resolveFilesDataFromDataStore({
+      cache: {
+        files: { value: {} },
+      },
+    });
+
+    expect(resolved).toBeNull();
+  });
+
+  test("returns null for stale legacy package payload keys", () => {
+    const resolved = resolveFilesDataFromDataStore({
+      deploymentPlatforms: {},
+      "packageData-max": {},
+    });
+
+    expect(resolved).toBeNull();
   });
 });

@@ -36,7 +36,38 @@ describe("Root Routes", () => {
 
       const body = await parseJson<{ links: unknown[] }>(response);
       expect(Array.isArray(body.links)).toBe(true);
-      expect(body.links.length).toBeGreaterThanOrEqual(6);
+      expect(body.links.length).toBe(3);
+    });
+
+    test("includes CORS headers", async () => {
+      const request = createRequest("/", {
+        headers: {
+          accept: "application/json",
+          origin: "https://portfolio.example.com",
+        },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      expect(response.headers.get("access-control-allow-methods")).toContain("OPTIONS");
+    });
+  });
+
+  describe("CORS preflight", () => {
+    test("returns 204 for OPTIONS requests", async () => {
+      const request = createRequest("/", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://portfolio.example.com",
+          "access-control-request-method": "GET",
+        },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 204);
+      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      expect(response.headers.get("access-control-allow-methods")).toContain("GET");
     });
   });
 
@@ -52,6 +83,20 @@ describe("Root Routes", () => {
           contentType.includes("application/json")
       ).toBe(true);
     });
+
+    test("does not expose wildcard catch-all paths in OpenAPI spec", async () => {
+      const request = createRequest("/docs/json", {
+        headers: { accept: "application/json" },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      expectJsonContent(response);
+
+      const spec = await parseJson<{ paths?: Record<string, unknown> }>(response);
+      expect(spec.paths).toBeDefined();
+      expect(spec.paths).not.toHaveProperty("/*");
+    });
   });
 
   describe("GET /health", () => {
@@ -63,20 +108,6 @@ describe("Root Routes", () => {
       const contentType = response.headers.get("content-type") ?? "";
       expect(contentType.includes("text/plain")).toBe(true);
       expect(await parseText(response)).toBe("ok");
-    });
-  });
-
-  describe("GET /api/user", () => {
-    test("returns username payload", async () => {
-      const request = createRequest("/api/user");
-      const response = await handleRequest(request);
-
-      expectStatus(response, 200);
-      expectJsonContent(response);
-
-      const body = await parseJson<{ username: string }>(response);
-      expect(body).toHaveProperty("username");
-      expect(typeof body.username).toBe("string");
     });
   });
 
