@@ -3,7 +3,7 @@ import { cors } from "@elysiajs/cors";
 import { staticPlugin } from "@elysiajs/static";
 import { Elysia, t } from "elysia";
 import { cache } from "@/cache";
-import { env } from "@/env";
+import { CACHE_TTLS, env } from "@/env";
 import { loggingPlugin } from "@/plugins/logging";
 import { negotiationPlugin } from "@/plugins/negotiation";
 import { securityPlugin } from "@/plugins/security";
@@ -442,23 +442,25 @@ export const createApp = async () =>
         const fieldsList = parseCommaSeparatedList(query.fields || "");
         const includeFromQuery = parseCommaSeparatedList(query.include || "");
         const includeList =
-          q && includeFromQuery.length === 0
-            ? [...DEFAULT_SEARCH_INCLUDE]
-            : includeFromQuery;
+          includeFromQuery.length > 0 ? includeFromQuery : [...DEFAULT_SEARCH_INCLUDE];
         const sort = query.sort || "updated";
         const limit = parseInt(query.limit || "100", 10);
         const offset = parseInt(query.offset || "0", 10);
 
+        const reposListCacheKey = `repos-list:${type}:${q}:${includeList.join(",")}:${fieldsList.join(",")}:${sort}:${limit}:${offset}`;
+        const cachedList = await cache.get<{ data: unknown[]; meta: { total: number; limit: number; offset: number; hasMore: boolean } }>(reposListCacheKey);
+        if (cachedList) {
+          return createCachedJsonResponse(request, cachedList, 120);
+        }
+
         const repos = await getRepositories(type);
         if (!repos) {
-          return createCachedJsonResponse(
-            request,
-            {
-              data: [],
-              meta: { total: 0, limit, offset, hasMore: false },
-            },
-            120
-          );
+          const emptyPayload = {
+            data: [] as unknown[],
+            meta: { total: 0, limit, offset, hasMore: false },
+          };
+          await cache.set(reposListCacheKey, emptyPayload, CACHE_TTLS.short);
+          return createCachedJsonResponse(request, emptyPayload, 120);
         }
 
         let result = repos.map((repo) => formatBasicRepo(repo as unknown as GitHubRepo)) as Array<
@@ -527,14 +529,9 @@ export const createApp = async () =>
           });
         }
 
-        return createCachedJsonResponse(
-          request,
-          {
-            data: paginated.data,
-            meta: paginated.meta,
-          },
-          120
-        );
+        const payload = { data: paginated.data, meta: paginated.meta };
+        await cache.set(reposListCacheKey, payload, CACHE_TTLS.short);
+        return createCachedJsonResponse(request, payload, 120);
       },
       {
         query: t.Optional(
@@ -557,6 +554,8 @@ export const createApp = async () =>
         },
         detail: {
           summary: "List/search repositories",
+          description:
+            "Returns repos with default full enrichment (readme, languages, deployments, npm, deployment-links) when include is omitted. Use include to request specific fields. Query q filters by name, full_name, description, topics, and README. Responses are cached server-side by query (5 min) and support Cache-Control/ETag.",
           tags: ["app"],
         },
       }
@@ -628,6 +627,8 @@ export const createApp = async () =>
         },
         detail: {
           summary: "Get repository details",
+          description:
+            "Returns one repo. When include is omitted, uses full default (readme, languages, deployments, npm, deployment-links). Use include or fields to limit response.",
           tags: ["app"],
         },
       }

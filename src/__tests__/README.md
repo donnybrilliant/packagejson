@@ -32,7 +32,7 @@ src/__tests__/
 ## Coverage focus
 
 - Route contracts are deterministic: no permissive `200 or 500` assertions.
-- Core `/repos` behavior: query search, include defaults, enrichment, pagination, field selection.
+- Core `/repos` behavior: query search, default full include (when omit), enrichment, pagination, field selection, list response server-side cache.
 - Core `/files` behavior: default v1 object tree + terminal `FileSystemItem` mode.
 - Security behavior:
   - protected vs public route access

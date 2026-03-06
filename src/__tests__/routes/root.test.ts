@@ -80,7 +80,7 @@ describe("Root Routes", () => {
       const contentType = response.headers.get("content-type") ?? "";
       expect(
         contentType.includes("text/html") ||
-          contentType.includes("application/json")
+        contentType.includes("application/json")
       ).toBe(true);
     });
 

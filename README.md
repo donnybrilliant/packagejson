@@ -39,10 +39,10 @@ A simplified v1-aligned API for:
 
 - `GET /repos`
   - query: `type`, `q`, `include`, `fields`, `sort`, `limit`, `offset`
-  - `q` searches: `name`, `full_name`, `description`, `topics`, and `README`
-  - if `q` is present and `include` is omitted, defaults to:
-    - `readme,languages,deployments,npm,deployment-links`
-- `GET /repos/:owner/:repo`
+  - **Default include:** when `include` is omitted, responses include full enrichment: `readme`, `languages`, `deployments`, `npm`, `deployment-links`. Use `include=readme` (etc.) to request only specific fields.
+  - **Search:** `q` filters repos by substring match (case-insensitive) in `name`, `full_name`, `description`, `topics`, and README body.
+  - List responses are cached server-side by query (5 min); responses also send `Cache-Control` and `ETag` for client/HTTP caching.
+- `GET /repos/:owner/:repo` – when `include` is omitted, uses the same full default set as the list.
 - `GET /repos/:owner/:repo/readme`
 - `GET /repos/:owner/:repo/languages`
 - `GET /repos/:owner/:repo/deployments`
@@ -113,6 +113,7 @@ A simplified v1-aligned API for:
 - Current cache keys:
   - `packageData-*` (`/package.json`) – 1 week
   - `files` (`/files`) – 1 week
+  - `repos-list:*` (`GET /repos` by query params) – 5 min
   - `deployment-platforms` (external deployment matching) – 1 hour
 - `data.json` namespaces:
   - `cache`: generic cache entries (development persistence).
@@ -130,4 +131,5 @@ A simplified v1-aligned API for:
 5. Quick API checks:
    - `curl -H "Accept: application/json" http://localhost:3000/files`
    - `curl -H "Accept: application/json" "http://localhost:3000/files?format=terminal"`
-   - `curl -H "Accept: application/json" "http://localhost:3000/repos?q=nebula"`
+   - `curl -H "Accept: application/json" http://localhost:3000/repos` (full list with default enrichment)
+   - `curl -H "Accept: application/json" "http://localhost:3000/repos?q=nebula"` (search)
