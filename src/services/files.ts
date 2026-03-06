@@ -8,7 +8,7 @@ import { readDataStore, updateDataStore } from "@/utils/data-store";
 /**
  * Maps repository names to their folder/file structure.
  */
-type FilesData = Record<string, unknown>;
+export type FilesData = Record<string, unknown>;
 
 export type FileSystemItem = {
   name: string;
@@ -224,6 +224,12 @@ export const refreshFilesData = async (): Promise<void> => {
   await fetchFilesData();
 };
 
+/** Returns cached files/VFS data without fetching; used to reuse readme/package.json in repos to reduce GitHub API calls. */
+export const getCachedFilesData = async (): Promise<FilesData | null> => {
+  const raw = await cache.get<FilesData>(CACHE_KEY);
+  return raw && isLikelyFilesData(raw) ? raw : null;
+};
+
 export const getFileAtPath = (data: FilesData, pathSegments: string[]): unknown => {
   if (pathSegments.length === 0) {
     return data;
@@ -243,6 +249,34 @@ export const getFileAtPath = (data: FilesData, pathSegments: string[]): unknown 
   }
 
   return current;
+};
+
+const README_NAMES = ["README.md", "README.txt", "README", "readme.md", "readme.txt", "readme"];
+
+/** Returns README content for a repo from files data if present; avoids GitHub API when building repos list. */
+export const getReadmeFromFilesData = (
+  data: FilesData,
+  repoName: string
+): string | null => {
+  for (const name of README_NAMES) {
+    const value = getFileAtPath(data, [repoName, name]);
+    if (typeof value === "string" && !value.startsWith("http")) {
+      return value;
+    }
+  }
+  return null;
+};
+
+/** Returns package.json content for a repo from files data if present; avoids GitHub API when building repos list. */
+export const getPackageJsonFromFilesData = (
+  data: FilesData,
+  repoName: string
+): string | null => {
+  const value = getFileAtPath(data, [repoName, "package.json"]);
+  if (typeof value === "string") {
+    return value;
+  }
+  return null;
 };
 
 const toFileSystemItem = (name: string, value: unknown): FileSystemItem => {

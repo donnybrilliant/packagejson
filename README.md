@@ -1,9 +1,6 @@
 # packagejson (Bun + Elysia)
 
-A simplified v1-aligned API for:
-- aggregated `package.json` data across GitHub repos,
-- full repo VFS traversal,
-- repo search + enrichment (README, languages, stars, deployments, npm package info).
+API service that connects your GitHub account to a single set of endpoints: aggregated dependency data from all your repos, a browsable file tree (VFS) across those repos, and repo metadata (READMEs, languages, stars, deployments, npm package info). Use it for dashboards, portfolios, or tooling that needs repo and package data in one place.
 
 ## Scripts
 
@@ -27,7 +24,7 @@ A simplified v1-aligned API for:
 
 ### Files / VFS
 
-- `GET /files` – default v1-style nested object tree
+- `GET /files` – nested object tree of repo files
 - `GET /files?format=terminal` – terminal-friendly `FileSystemItem` tree:
   - root: `~`
   - children: `github`, `projects`

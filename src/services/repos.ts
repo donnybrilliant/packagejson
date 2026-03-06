@@ -300,10 +300,14 @@ const parseRepoUrl = (repoUrl: string): { owner: string; name: string } | null =
 
 export const fetchNpmPackageInfo = async (
   repoName: string,
-  owner: string
+  owner: string,
+  cachedPackageJsonContent?: string | null
 ): Promise<Record<string, unknown> | null> => {
   try {
-    const packageJsonContent = await fetchFileContent(repoName, "package.json", owner, false);
+    const packageJsonContent =
+      cachedPackageJsonContent != null && typeof cachedPackageJsonContent === "string"
+        ? cachedPackageJsonContent
+        : await fetchFileContent(repoName, "package.json", owner, false);
 
     if (!packageJsonContent || typeof packageJsonContent !== "string") {
       return null;
@@ -493,10 +497,17 @@ export const fetchRepositoryDeploymentsWithFallback = async (
   return deploymentLinksToArray(deploymentLinks);
 };
 
+export type CachedRepoContent = {
+  readme?: string | null;
+  packageJson?: string | null;
+};
+
 export const fetchEnhancedRepositoryData = async (
   repoName: string,
   owner: string,
-  options: EnhancedRepoOptions = {}
+  options: EnhancedRepoOptions = {},
+  existingRepo?: GitHubRepo | null,
+  cachedContent?: CachedRepoContent | null
 ): Promise<Record<string, unknown> | null> => {
   const {
     includeReadme = true,
@@ -506,16 +517,22 @@ export const fetchEnhancedRepositoryData = async (
     includeDeploymentLinks = true,
   } = options;
 
-  const repoData = (await fetchGitHubAPI(`/repos/${owner}/${repoName}`)) as
-    | GitHubRepo
-    | { message?: string }
-    | null;
+  let repo: GitHubRepo;
 
-  if (!repoData || (isRecord(repoData) && "message" in repoData)) {
-    return null;
+  if (existingRepo && existingRepo.name === repoName && existingRepo.owner?.login === owner) {
+    repo = existingRepo as GitHubRepo;
+  } else {
+    const repoData = (await fetchGitHubAPI(`/repos/${owner}/${repoName}`)) as
+      | GitHubRepo
+      | { message?: string }
+      | null;
+
+    if (!repoData || (isRecord(repoData) && "message" in repoData)) {
+      return null;
+    }
+
+    repo = repoData as GitHubRepo;
   }
-
-  const repo = repoData as GitHubRepo;
 
   const enhancedData: Record<string, unknown> = {
     name: repo.name,
@@ -561,8 +578,13 @@ export const fetchEnhancedRepositoryData = async (
 
   const additionalDataPromises: Promise<Record<string, unknown>>[] = [];
 
+  const cachedReadme = cachedContent?.readme;
   if (includeReadme) {
-    additionalDataPromises.push(fetchReadme(repoName, owner).then((readme) => ({ readme })));
+    if (cachedReadme != null && typeof cachedReadme === "string") {
+      additionalDataPromises.push(Promise.resolve({ readme: cachedReadme }));
+    } else {
+      additionalDataPromises.push(fetchReadme(repoName, owner).then((readme) => ({ readme })));
+    }
   }
 
   if (includeLanguages) {
@@ -581,8 +603,13 @@ export const fetchEnhancedRepositoryData = async (
     );
   }
 
+  const cachedPackageJson = cachedContent?.packageJson;
   if (includeNpm) {
-    additionalDataPromises.push(fetchNpmPackageInfo(repoName, owner).then((npm) => ({ npm })));
+    additionalDataPromises.push(
+      fetchNpmPackageInfo(repoName, owner, cachedPackageJson ?? undefined).then((npm) => ({
+        npm,
+      }))
+    );
   }
 
   if (includeDeploymentLinks) {

@@ -12,7 +12,10 @@ import { join } from "node:path";
 import { fetchAggregatedData } from "@/services/package";
 import {
   fetchFilesData,
+  getCachedFilesData,
   getFileAtPath,
+  getPackageJsonFromFilesData,
+  getReadmeFromFilesData,
   refreshFilesData,
   toTerminalFileSystem,
 } from "@/services/files";
@@ -481,6 +484,7 @@ export const createApp = async () =>
         }
 
         if (includeList.length > 0) {
+          const filesData = await getCachedFilesData();
           result = await Promise.all(
             result.map(async (repo) => {
               const owner = repo.owner?.login;
@@ -490,10 +494,23 @@ export const createApp = async () =>
                 return repo;
               }
 
+              const rawRepo = repos.find(
+                (r) => r.name === repoName && r.owner?.login === owner
+              ) as GitHubRepo | undefined;
+              const cachedContent =
+                filesData != null
+                  ? {
+                      readme: getReadmeFromFilesData(filesData, repoName),
+                      packageJson: getPackageJsonFromFilesData(filesData, repoName),
+                    }
+                  : null;
+
               const enhanced = await fetchEnhancedRepositoryData(
                 repoName,
                 owner,
-                convertIncludeListToOptions(includeList)
+                convertIncludeListToOptions(includeList),
+                rawRepo ?? null,
+                cachedContent
               );
 
               return enhanced ? { ...repo, ...enhanced } : repo;

@@ -73,7 +73,12 @@ const renderTreePlaceholder = () => {
 }
 
 const renderLoadingState = (path) => {
-  treeRoot.innerHTML = '<p class="placeholder">Loading endpoint data…</p>'
+  treeRoot.innerHTML = `
+    <div class="placeholder placeholder-loading">
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="placeholder-text">Loading endpoint data…</p>
+    </div>
+  `
   previewPath.textContent = path
   previewContent.innerHTML = "<code>Fetching data from API…</code>"
 }

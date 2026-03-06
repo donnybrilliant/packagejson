@@ -1,4 +1,6 @@
+import { cache } from "@/cache";
 import { env } from "@/env";
+import { CACHE_TTLS } from "@/env";
 import { getErrorMessage, isArray, isRecord } from "@/utils/errors";
 import { handleGitHubResponse, isValidGitHubResponse } from "@/utils/github";
 import { log } from "@/utils/logger";
@@ -257,8 +259,11 @@ export const fetchGitHubAPI = async (endpoint: string): Promise<unknown | null> 
   }
 };
 
+const REPOS_CACHE_KEY_PREFIX = "github-repos:";
+
 /**
- * Fetches repositories for the authenticated user
+ * Fetches repositories for the authenticated user.
+ * Result is cached by type so files, repos, and package endpoints share one list and avoid duplicate API calls.
  * @param type - Repository type: "all", "public", or "private" (default: "public")
  * @returns Promise that resolves to an array of repositories or null
  */
@@ -268,6 +273,12 @@ export const getRepositories = async (type: string = "public"): Promise<GitHubRe
     return TEST_REPOSITORIES.map((fixture) => fixture.repo);
   }
 
+  const cacheKey = `${REPOS_CACHE_KEY_PREFIX}${type}`;
+  const cached = await cache.get<GitHubRepo[]>(cacheKey);
+  if (cached && isArray(cached)) {
+    return cached;
+  }
+
   const username = env.USERNAME.trim();
   const endpoint =
     type === "public" && username
@@ -275,7 +286,11 @@ export const getRepositories = async (type: string = "public"): Promise<GitHubRe
       : `/user/repos?type=${type}&per_page=100&sort=updated`;
 
   const data = await fetchGitHubAPI(endpoint);
-  return isArray(data) ? (data as GitHubRepo[]) : null;
+  const repos = isArray(data) ? (data as GitHubRepo[]) : null;
+  if (repos) {
+    await cache.set(cacheKey, repos, CACHE_TTLS.short);
+  }
+  return repos;
 };
 
 /**
