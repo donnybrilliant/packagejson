@@ -127,6 +127,14 @@ const getLocalData = async (): Promise<FilesData | null> => {
       return null;
     }
 
+    // Empty root with no vfs namespace means missing/empty data.json; don't treat as valid VFS
+    if (
+      Object.keys(resolved).length === 0 &&
+      !isRecord(dataStore.vfs)
+    ) {
+      return null;
+    }
+
     log("info", "Loaded files data from legacy data.json root", {
       path: env.DATA_JSON_PATH,
       repos: Object.keys(resolved).length,

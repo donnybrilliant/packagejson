@@ -39,6 +39,7 @@ import {
   fetchRepositoryLanguages,
   getRepositories,
 } from "@/services/github";
+import { GitHubRateLimitError } from "@/utils/github";
 import { usingBuiltinSemver } from "@/semver";
 
 const LINKS = [
@@ -258,13 +259,23 @@ export const createApp = async () =>
             ? (versionParam as "min" | "max" | "minmax")
             : "max";
 
-        const data = await fetchAggregatedData(versionType);
-        if (!data) {
-          set.status = 500;
-          return { error: "Failed to fetch aggregated package data" };
+        try {
+          const data = await fetchAggregatedData(versionType);
+          if (!data) {
+            set.status = 500;
+            return { error: "Failed to fetch aggregated package data" };
+          }
+          return createCachedJsonResponse(request, data, 300);
+        } catch (error) {
+          if (error instanceof GitHubRateLimitError) {
+            set.status = 503;
+            return {
+              error: "GitHub API rate limit exceeded",
+              message: "Try again later or ensure GITHUB_TOKEN is set for higher limits.",
+            };
+          }
+          throw error;
         }
-
-        return createCachedJsonResponse(request, data, 300);
       },
       {
         query: t.Optional(
@@ -278,6 +289,7 @@ export const createApp = async () =>
           200: t.Any(),
           304: t.Null(),
           500: t.Object({ error: t.String() }),
+          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
         },
         detail: {
           summary: "Aggregated package.json data",
@@ -297,16 +309,26 @@ export const createApp = async () =>
 
         await cache.del(`packageData-${versionType}`);
 
-        const data = await fetchAggregatedData(versionType);
-        if (!data) {
-          set.status = 500;
-          return { error: "Failed to refresh aggregated package data" };
+        try {
+          const data = await fetchAggregatedData(versionType);
+          if (!data) {
+            set.status = 500;
+            return { error: "Failed to refresh aggregated package data" };
+          }
+          return new Response(null, {
+            status: 302,
+            headers: { Location: `/package.json?version=${versionType}` },
+          });
+        } catch (error) {
+          if (error instanceof GitHubRateLimitError) {
+            set.status = 503;
+            return {
+              error: "GitHub API rate limit exceeded",
+              message: "Try again later or ensure GITHUB_TOKEN is set for higher limits.",
+            };
+          }
+          throw error;
         }
-
-        return new Response(null, {
-          status: 302,
-          headers: { Location: `/package.json?version=${versionType}` },
-        });
       },
       {
         query: t.Optional(
@@ -319,6 +341,7 @@ export const createApp = async () =>
         response: {
           302: t.Null(),
           500: t.Object({ error: t.String() }),
+          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
         },
         detail: {
           summary: "Refresh package aggregation cache",
@@ -328,22 +351,60 @@ export const createApp = async () =>
     )
     .get(
       "/files",
-      async ({ query, request }) => {
-        const data = await fetchFilesData();
-
-        if (query.format === "terminal") {
-          return createCachedJsonResponse(request, toTerminalFileSystem(data), 120);
+      async ({ query, request, set }) => {
+        const FILES_TIMEOUT_MS = 55_000;
+        let fetchWithOptionalTimeout: ReturnType<typeof fetchFilesData>;
+        if (env.NODE_ENV === "production") {
+          const filesPromise = fetchFilesData();
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("FILES_TIMEOUT")),
+              FILES_TIMEOUT_MS
+            )
+          );
+          // Whichever promise loses the race keeps running; attach handlers so its eventual
+          // settlement (reject or resolve) does not cause unhandled rejection or resource leaks.
+          filesPromise.catch(() => {});
+          timeoutPromise.catch(() => {});
+          fetchWithOptionalTimeout = Promise.race([filesPromise, timeoutPromise]);
+        } else {
+          fetchWithOptionalTimeout = fetchFilesData();
         }
 
-        const prefersHtml = (request.headers.get("accept") ?? "").includes("text/html");
+        try {
+          const data = await fetchWithOptionalTimeout;
 
-        if (prefersHtml) {
-          return new Response(objectToLinks("/files", data), {
-            headers: { "content-type": "text/html; charset=utf-8" },
-          });
+          if (query.format === "terminal") {
+            return createCachedJsonResponse(request, toTerminalFileSystem(data), 120);
+          }
+
+          const prefersHtml = (request.headers.get("accept") ?? "").includes("text/html");
+
+          if (prefersHtml) {
+            return new Response(objectToLinks("/files", data), {
+              headers: { "content-type": "text/html; charset=utf-8" },
+            });
+          }
+
+          return createCachedJsonResponse(request, data, 120);
+        } catch (error) {
+          if (error instanceof GitHubRateLimitError) {
+            set.status = 503;
+            return {
+              error: "GitHub API rate limit exceeded",
+              message: "Try again later or ensure GITHUB_TOKEN is set for higher limits.",
+            };
+          }
+          if (error instanceof Error && error.message === "FILES_TIMEOUT") {
+            set.status = 503;
+            return {
+              error: "Files tree request timed out",
+              message:
+                "Building the file tree from GitHub takes too long. Try again later or use /files/refresh to warm the cache, then retry.",
+            };
+          }
+          throw error;
         }
-
-        return createCachedJsonResponse(request, data, 120);
       },
       {
         query: t.Optional(
@@ -353,6 +414,7 @@ export const createApp = async () =>
         ),
         response: {
           200: t.Any(),
+          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
         },
         detail: {
           summary: "File system tree",
@@ -439,7 +501,7 @@ export const createApp = async () =>
     })
     .get(
       "/repos",
-      async ({ query, request }) => {
+      async ({ query, request, set }) => {
         const type = query.type || "public";
         const q = (query.q || "").trim();
         const fieldsList = parseCommaSeparatedList(query.fields || "");
@@ -456,7 +518,20 @@ export const createApp = async () =>
           return createCachedJsonResponse(request, cachedList, 120);
         }
 
-        const repos = await getRepositories(type);
+        let repos: Awaited<ReturnType<typeof getRepositories>>;
+        try {
+          repos = await getRepositories(type);
+        } catch (error) {
+          if (error instanceof GitHubRateLimitError) {
+            set.status = 503;
+            return {
+              error: "GitHub API rate limit exceeded",
+              message: "Try again later or ensure GITHUB_TOKEN is set for higher limits.",
+            };
+          }
+          throw error;
+        }
+
         if (!repos) {
           const emptyPayload = {
             data: [] as unknown[],
@@ -568,6 +643,7 @@ export const createApp = async () =>
         ),
         response: {
           200: t.Any(),
+          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
         },
         detail: {
           summary: "List/search repositories",

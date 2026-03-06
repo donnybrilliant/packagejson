@@ -1,10 +1,18 @@
 import { log } from "./logger";
 import { isErrorResponse } from "./errors";
 
+/** Thrown when GitHub returns 403 (rate limit). Handlers should return 503 so clients get an error, not 200 with empty data. */
+export class GitHubRateLimitError extends Error {
+  constructor(endpoint: string) {
+    super(`GitHub API rate limit exceeded: ${endpoint}`);
+    this.name = "GitHubRateLimitError";
+  }
+}
+
 /**
  * Handles GitHub API response, checking for errors and rate limits
  * @param response - Fetch response object
- * @returns Promise that resolves to the JSON data or null on error
+ * @returns Promise that resolves to the JSON data or null on error; throws GitHubRateLimitError on 403
  */
 export const handleGitHubResponse = async (
   response: Response,
@@ -12,7 +20,7 @@ export const handleGitHubResponse = async (
 ): Promise<unknown | null> => {
   if (response.status === 403) {
     log("error", "GitHub API rate limit exceeded", { endpoint });
-    return null;
+    throw new GitHubRateLimitError(endpoint);
   }
 
   if (response.status === 202) {

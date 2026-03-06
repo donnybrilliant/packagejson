@@ -3,6 +3,7 @@ import { CACHE_TTLS, env } from "@/env";
 import { coerce, compare } from "@/semver";
 import { getPackageDetails, getRepositories } from "@/services/github";
 import { getErrorMessage } from "@/utils/errors";
+import { GitHubRateLimitError } from "@/utils/github";
 import { log } from "@/utils/logger";
 
 /**
@@ -180,6 +181,9 @@ export const fetchAggregatedData = async (
 
     return aggregatedData;
   } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      throw error;
+    }
     log("error", "Error in fetchAggregatedData", {
       versionType,
       error: getErrorMessage(error),

@@ -1,15 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { handleGitHubResponse, isValidGitHubResponse } from "@/utils/github";
+import {
+  handleGitHubResponse,
+  isValidGitHubResponse,
+  GitHubRateLimitError,
+} from "@/utils/github";
 
 describe("GitHub response utilities", () => {
-  test("handleGitHubResponse returns null for 403 rate-limit responses", async () => {
+  test("handleGitHubResponse throws GitHubRateLimitError for 403 rate-limit responses", async () => {
     const response = new Response(JSON.stringify({ message: "forbidden" }), {
       status: 403,
       headers: { "content-type": "application/json" },
     });
 
-    const result = await handleGitHubResponse(response, "/repos/test/repo");
-    expect(result).toBeNull();
+    await expect(
+      handleGitHubResponse(response, "/repos/test/repo")
+    ).rejects.toThrow(GitHubRateLimitError);
   });
 
   test("handleGitHubResponse returns null for 202 stats-pending responses", async () => {

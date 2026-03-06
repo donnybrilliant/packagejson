@@ -2,7 +2,11 @@ import { cache } from "@/cache";
 import { env } from "@/env";
 import { CACHE_TTLS } from "@/env";
 import { getErrorMessage, isArray, isRecord } from "@/utils/errors";
-import { handleGitHubResponse, isValidGitHubResponse } from "@/utils/github";
+import {
+  handleGitHubResponse,
+  isValidGitHubResponse,
+  GitHubRateLimitError,
+} from "@/utils/github";
 import { log } from "@/utils/logger";
 
 type GitHubRepo = {
@@ -251,6 +255,9 @@ export const fetchGitHubAPI = async (endpoint: string): Promise<unknown | null> 
 
     return await handleGitHubResponse(response, endpoint);
   } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      throw error;
+    }
     log("error", "Error in fetchGitHubAPI", {
       endpoint,
       error: getErrorMessage(error),
@@ -393,6 +400,9 @@ export const fetchFolderStructure = async (
     }
     return structure;
   } catch (error) {
+    if (error instanceof GitHubRateLimitError) {
+      throw error;
+    }
     log("error", "Error in fetchFolderStructure", {
       repoName,
       path,
