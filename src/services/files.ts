@@ -3,12 +3,17 @@ import { CACHE_TTLS, env } from "@/env";
 import { fetchFolderStructure, getRepositories } from "@/services/github";
 import { getErrorMessage, isRecord } from "@/utils/errors";
 import { log } from "@/utils/logger";
-import { readDataStore, updateDataStore } from "@/utils/data-store";
+import {
+  type DataStore,
+  readDataStore,
+  updateDataStore,
+} from "@/utils/data-store";
+import type { JsonObject, JsonValue } from "@/types/json";
 
 /**
  * Maps repository names to their folder/file structure.
  */
-export type FilesData = Record<string, unknown>;
+export type FilesData = JsonObject;
 
 export type FileSystemItem = {
   name: string;
@@ -26,7 +31,7 @@ const KNOWN_NON_VFS_KEYS = new Set([
   "packageData-minmax",
 ]);
 
-const isLikelyFilesData = (value: unknown): value is FilesData => {
+const isLikelyFilesData = (value: JsonValue | null): value is FilesData => {
   if (!isRecord(value)) return false;
 
   const keys = Object.keys(value);
@@ -53,13 +58,13 @@ const isUrl = (value: string): boolean => {
   }
 };
 
-const normalizeLoadedFilesData = (raw: unknown): FilesData | null => {
-  let current: unknown = raw;
+const normalizeLoadedFilesData = (raw: JsonValue | undefined): FilesData | null => {
+  let current: JsonValue | undefined = raw;
 
   // Unwrap legacy cache envelopes that were accidentally persisted to data.json.
   for (let i = 0; i < 4; i += 1) {
     if (isRecord(current) && "files" in current) {
-      const filesNode = (current as Record<string, unknown>).files;
+      const filesNode = (current as JsonObject).files;
       if (isRecord(filesNode) && "value" in filesNode && isRecord(filesNode.value)) {
         current = filesNode.value;
         continue;
@@ -100,14 +105,14 @@ const normalizeLoadedFilesData = (raw: unknown): FilesData | null => {
 };
 
 export const resolveFilesDataFromDataStore = (
-  dataStore: Record<string, unknown>
+  dataStore: DataStore
 ): FilesData | null => {
   const fromNamespace = normalizeLoadedFilesData(dataStore.vfs);
   if (fromNamespace) {
     return fromNamespace;
   }
 
-  return normalizeLoadedFilesData(dataStore);
+  return normalizeLoadedFilesData(dataStore as JsonObject);
 };
 
 const getLocalData = async (): Promise<FilesData | null> => {
@@ -238,12 +243,15 @@ export const getCachedFilesData = async (): Promise<FilesData | null> => {
   return raw && isLikelyFilesData(raw) ? raw : null;
 };
 
-export const getFileAtPath = (data: FilesData, pathSegments: string[]): unknown => {
+export const getFileAtPath = (
+  data: FilesData,
+  pathSegments: string[]
+): JsonValue | null => {
   if (pathSegments.length === 0) {
     return data;
   }
 
-  let current: unknown = data;
+  let current: JsonValue = data;
   for (const segment of pathSegments) {
     const decoded = decodeURIComponent(segment);
     if (isRecord(current)) {
@@ -287,7 +295,7 @@ export const getPackageJsonFromFilesData = (
   return null;
 };
 
-const toFileSystemItem = (name: string, value: unknown): FileSystemItem => {
+const toFileSystemItem = (name: string, value: JsonValue): FileSystemItem => {
   if (isRecord(value)) {
     const children = Object.entries(value)
       .sort(([left], [right]) => left.localeCompare(right))

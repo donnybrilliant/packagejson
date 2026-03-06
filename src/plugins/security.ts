@@ -119,7 +119,7 @@ export const extractClientIp = (
     if (cloudflareIp) return cloudflareIp;
   }
 
-  return server?.requestIP?.(request)?.address ?? "unknown";
+  return server?.requestIP?.(request)?.address ?? "n-a";
 };
 
 const unauthorizedResponse = {

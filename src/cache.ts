@@ -5,17 +5,18 @@ import {
   readDataStore,
   updateDataStore,
 } from "@/utils/data-store";
+import type { JsonValue } from "@/types/json";
 
 type CacheEnvelope<T> = {
   value: T;
   expiresAt?: number;
 };
 
-const isExpired = (envelope: CacheEnvelope<unknown>): boolean => {
+const isExpired = <T>(envelope: CacheEnvelope<T>): boolean => {
   return typeof envelope.expiresAt === "number" && Date.now() > envelope.expiresAt;
 };
 
-const readEnvelope = (value: unknown): CacheEnvelope<unknown> | null => {
+const readEnvelope = (value: JsonValue | undefined): CacheEnvelope<JsonValue> | null => {
   if (!isRecord(value)) return null;
   if (!("value" in value)) return null;
 
@@ -38,8 +39,8 @@ type CacheConfig = {
 };
 
 type CacheClient = {
-  get<T>(key: string): Promise<T | null>;
-  set<T>(key: string, value: T, ttlMs?: number): Promise<void>;
+  get<T extends JsonValue>(key: string): Promise<T | null>;
+  set<T extends JsonValue>(key: string, value: T, ttlMs?: number): Promise<void>;
   del(key: string): Promise<void>;
   flush(): Promise<void>;
 };
@@ -55,14 +56,14 @@ export const createCache = (
     ...config,
   };
 
-  const store = new Map<string, CacheEnvelope<unknown>>();
+  const store = new Map<string, CacheEnvelope<JsonValue>>();
   const persistCacheToFile = resolvedConfig.nodeEnv === "development";
   let initialized = false;
   let initializePromise: Promise<void> | null = null;
   let writeTimer: Timer | null = null;
 
-  const serializeCurrentStore = (): Record<string, CacheEnvelope<unknown>> => {
-    const serialized: Record<string, CacheEnvelope<unknown>> = {};
+  const serializeCurrentStore = (): Record<string, CacheEnvelope<JsonValue>> => {
+    const serialized: Record<string, CacheEnvelope<JsonValue>> = {};
 
     for (const [key, envelope] of store.entries()) {
       if (isExpired(envelope)) {
@@ -128,7 +129,7 @@ export const createCache = (
   };
 
   return {
-    async get<T>(key: string): Promise<T | null> {
+    async get<T extends JsonValue>(key: string): Promise<T | null> {
       await ensureInitialized();
 
       const envelope = store.get(key);
@@ -143,7 +144,7 @@ export const createCache = (
       return envelope.value as T;
     },
 
-    async set<T>(key: string, value: T, ttlMs?: number): Promise<void> {
+    async set<T extends JsonValue>(key: string, value: T, ttlMs?: number): Promise<void> {
       await ensureInitialized();
 
       const expiresAt = typeof ttlMs === "number" ? Date.now() + ttlMs : undefined;

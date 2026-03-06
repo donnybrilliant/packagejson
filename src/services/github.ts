@@ -8,6 +8,7 @@ import {
   GitHubRateLimitError,
 } from "@/utils/github";
 import { log } from "@/utils/logger";
+import type { JsonObject, JsonValue } from "@/types/json";
 
 type GitHubRepo = {
   name: string;
@@ -60,8 +61,8 @@ type TestRepositoryFixture = {
   repo: GitHubRepo;
   readme: string;
   languages: Record<string, number>;
-  packageJson: Record<string, unknown>;
-  deployments: unknown[];
+  packageJson: JsonObject;
+  deployments: JsonObject[];
 };
 
 const TEST_REPOSITORIES: TestRepositoryFixture[] = [
@@ -227,7 +228,7 @@ const isOtherBinary = (data: GitHubContentItem): boolean => {
  * @param endpoint - API endpoint (e.g., "/repos/owner/repo")
  * @returns Promise that resolves to the JSON data, error object, or null
  */
-export const fetchGitHubAPI = async (endpoint: string): Promise<unknown | null> => {
+export const fetchGitHubAPI = async (endpoint: string): Promise<JsonValue | null> => {
   if (env.NODE_ENV === "test") {
     const repoMatch = endpoint.match(/^\/repos\/([^/]+)\/([^/?]+)$/);
     if (repoMatch) {
@@ -267,6 +268,8 @@ export const fetchGitHubAPI = async (endpoint: string): Promise<unknown | null> 
 };
 
 const REPOS_CACHE_KEY_PREFIX = "github-repos:";
+const REPOS_PER_PAGE = 100;
+const MAX_REPOS_PAGES = 50;
 
 /**
  * Fetches repositories for the authenticated user.
@@ -287,16 +290,41 @@ export const getRepositories = async (type: string = "public"): Promise<GitHubRe
   }
 
   const username = env.USERNAME.trim();
-  const endpoint =
+  const baseEndpoint =
     type === "public" && username
-      ? `/users/${encodeURIComponent(username)}/repos?type=owner&per_page=100&sort=updated`
-      : `/user/repos?type=${type}&per_page=100&sort=updated`;
+      ? `/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated`
+      : `/user/repos?type=${type}&sort=updated`;
 
-  const data = await fetchGitHubAPI(endpoint);
-  const repos = isArray(data) ? (data as GitHubRepo[]) : null;
-  if (repos) {
-    await cache.set(cacheKey, repos, CACHE_TTLS.short);
+  const repos: GitHubRepo[] = [];
+
+  for (let page = 1; page <= MAX_REPOS_PAGES; page += 1) {
+    const endpoint = `${baseEndpoint}&per_page=${REPOS_PER_PAGE}&page=${page}`;
+    const data = await fetchGitHubAPI(endpoint);
+
+    if (!isArray(data)) {
+      return page === 1 ? null : repos;
+    }
+
+    const pageRepos = data as GitHubRepo[];
+    if (pageRepos.length === 0) {
+      break;
+    }
+
+    repos.push(...pageRepos);
+    if (pageRepos.length < REPOS_PER_PAGE) {
+      break;
+    }
+
+    if (page === MAX_REPOS_PAGES) {
+      log("warn", "Reached repository pagination safety limit", {
+        type,
+        maxPages: MAX_REPOS_PAGES,
+        reposLoaded: repos.length,
+      });
+    }
   }
+
+  await cache.set(cacheKey, repos, CACHE_TTLS.short);
   return repos;
 };
 
@@ -366,7 +394,7 @@ export const fetchFolderStructure = async (
   repoName: string,
   path = "",
   owner: string,
-): Promise<Record<string, unknown> | null> => {
+): Promise<JsonObject | null> => {
   try {
     const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/contents/${path}`);
 
@@ -378,7 +406,7 @@ export const fetchFolderStructure = async (
       return null;
     }
 
-    const structure: Record<string, unknown> = {};
+    const structure: JsonObject = {};
     for (const item of data) {
       const contentItem = item as GitHubContentItem;
       if (contentItem.type === "dir") {
@@ -509,7 +537,7 @@ export const fetchRepositoryLanguages = async (
 export const fetchCommitActivity = async (
   repoName: string,
   owner: string,
-): Promise<unknown[] | null> => {
+): Promise<JsonValue[] | null> => {
   const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/stats/commit_activity`);
 
   if (!isValidGitHubResponse(data)) {
@@ -529,7 +557,7 @@ export const fetchCommitActivity = async (
 export const fetchContributorStats = async (
   repoName: string,
   owner: string,
-): Promise<unknown[] | null> => {
+): Promise<JsonValue[] | null> => {
   const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/stats/contributors`);
 
   if (!isValidGitHubResponse(data)) {
@@ -590,7 +618,7 @@ export const fetchReleases = async (
   repoName: string,
   owner: string,
   perPage = 10,
-): Promise<unknown[] | null> => {
+): Promise<JsonValue[] | null> => {
   const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/releases?per_page=${perPage}`);
 
   if (!isValidGitHubResponse(data)) {
@@ -609,7 +637,7 @@ export const fetchReleases = async (
 export const fetchWorkflows = async (
   repoName: string,
   owner: string,
-): Promise<unknown[] | null> => {
+): Promise<JsonObject[] | null> => {
   const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/actions/workflows`);
 
   if (!isValidGitHubResponse(data) || !isRecord(data)) {
@@ -617,7 +645,7 @@ export const fetchWorkflows = async (
   }
 
   if ("workflows" in data && isArray(data.workflows)) {
-    return data.workflows;
+    return data.workflows as JsonObject[];
   }
 
   return null;
@@ -759,7 +787,7 @@ export const fetchDeployments = async (
   }
 
   const deploymentsWithStatuses = await Promise.all(
-    data.map(async (deployment: unknown) => {
+    data.map(async (deployment: JsonValue) => {
       const dep = deployment as {
         id: number;
         ref: string;

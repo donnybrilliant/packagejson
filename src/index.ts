@@ -28,6 +28,7 @@ import {
   fetchRepositoryDeploymentsWithFallback,
   filterReposByQuery,
   formatBasicRepo,
+  mapWithConcurrency,
   paginate,
   parseCommaSeparatedList,
   selectFields,
@@ -41,6 +42,7 @@ import {
 } from "@/services/github";
 import { GitHubRateLimitError } from "@/utils/github";
 import { usingBuiltinSemver } from "@/semver";
+import type { JsonObject, JsonValue } from "@/types/json";
 
 const LINKS = [
   { href: "/package.json", label: "package.json" },
@@ -83,6 +85,24 @@ const openapiConfig = {
   },
 };
 
+type PaginationMeta = {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+type RepoListItem = JsonObject & {
+  owner?: { login?: string };
+  name?: string;
+  full_name?: string;
+  description?: string | null;
+  topics?: JsonValue;
+  stars?: number;
+  updated_at?: string;
+  html_url?: string;
+};
+
 const renderLinksHtml = () => `
 <!doctype html>
 <html lang="en">
@@ -116,6 +136,15 @@ const parseCommaSeparatedEnv = (value: string): string[] =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
+type VersionType = "min" | "max" | "minmax";
+
+const resolveVersionType = (rawValue: string | undefined): VersionType => {
+  if (rawValue === "min" || rawValue === "max" || rawValue === "minmax") {
+    return rawValue;
+  }
+  return "max";
+};
+
 const corsOrigins = parseCommaSeparatedEnv(env.CORS_ORIGIN);
 const corsOriginWildcard =
   corsOrigins.length === 0 || corsOrigins.includes("*");
@@ -123,7 +152,7 @@ const corsOriginWildcard =
 const corsOrigin = corsOriginWildcard ? "*" : corsOrigins;
 const corsCredentials = corsOriginWildcard ? false : env.CORS_ALLOW_CREDENTIALS;
 
-const isUrl = (str: unknown): boolean => {
+const isUrl = (str: JsonValue): boolean => {
   if (typeof str !== "string") return false;
   try {
     new URL(str);
@@ -133,7 +162,7 @@ const isUrl = (str: unknown): boolean => {
   }
 };
 
-const objectToLinks = (prefix: string, obj: Record<string, unknown>): string => {
+const objectToLinks = (prefix: string, obj: JsonObject): string => {
   const links = Object.keys(obj)
     .map((key) => {
       const value = obj[key];
@@ -171,7 +200,7 @@ const hasMatchingEtag = (
 
 const createCachedJsonResponse = (
   request: Request,
-  payload: unknown,
+  payload: JsonValue,
   maxAgeSeconds = 300
 ): Response => {
   const body = JSON.stringify(payload);
@@ -234,7 +263,14 @@ export const createApp = async () =>
       },
       {
         response: {
-          200: t.Any(),
+          200: t.Object({
+            links: t.Array(
+              t.Object({
+                href: t.String(),
+                label: t.String(),
+              })
+            ),
+          }),
         },
         detail: {
           summary: "Root links",
@@ -252,12 +288,7 @@ export const createApp = async () =>
     .get(
       "/package.json",
       async ({ query, request, set }) => {
-        const versionParam = query.version;
-        const validTypes = ["min", "max", "minmax"];
-        const versionType =
-          versionParam && validTypes.includes(versionParam)
-            ? (versionParam as "min" | "max" | "minmax")
-            : "max";
+        const versionType = resolveVersionType(query.version);
 
         try {
           const data = await fetchAggregatedData(versionType);
@@ -285,27 +316,16 @@ export const createApp = async () =>
             ),
           })
         ),
-        response: {
-          200: t.Any(),
-          304: t.Null(),
-          500: t.Object({ error: t.String() }),
-          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
-        },
         detail: {
           summary: "Aggregated package.json data",
           tags: ["app"],
         },
       }
     )
-    .get(
+    .post(
       "/package.json/refresh",
       async ({ query, set }) => {
-        const versionParam = query.version;
-        const validTypes = ["min", "max", "minmax"];
-        const versionType =
-          versionParam && validTypes.includes(versionParam)
-            ? (versionParam as "min" | "max" | "minmax")
-            : "max";
+        const versionType = resolveVersionType(query.version);
 
         await cache.del(`packageData-${versionType}`);
 
@@ -316,7 +336,7 @@ export const createApp = async () =>
             return { error: "Failed to refresh aggregated package data" };
           }
           return new Response(null, {
-            status: 302,
+            status: 303,
             headers: { Location: `/package.json?version=${versionType}` },
           });
         } catch (error) {
@@ -339,12 +359,14 @@ export const createApp = async () =>
           })
         ),
         response: {
-          302: t.Null(),
+          303: t.Null(),
           500: t.Object({ error: t.String() }),
           503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
         },
         detail: {
           summary: "Refresh package aggregation cache",
+          description:
+            "Mutates package cache. Use POST. Returns 303 redirect to the canonical GET endpoint.",
           tags: ["app"],
         },
       }
@@ -400,7 +422,7 @@ export const createApp = async () =>
             return {
               error: "Files tree request timed out",
               message:
-                "Building the file tree from GitHub takes too long. Try again later or use /files/refresh to warm the cache, then retry.",
+                "Building the file tree from GitHub takes too long. Try again later or use POST /files/refresh to warm the cache, then retry.",
             };
           }
           throw error;
@@ -412,10 +434,6 @@ export const createApp = async () =>
             format: t.Optional(t.Literal("terminal")),
           })
         ),
-        response: {
-          200: t.Any(),
-          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
-        },
         detail: {
           summary: "File system tree",
           description:
@@ -424,21 +442,23 @@ export const createApp = async () =>
         },
       }
     )
-    .get(
+    .post(
       "/files/refresh",
       async () => {
         await refreshFilesData();
         return new Response(null, {
-          status: 302,
+          status: 303,
           headers: { Location: "/files" },
         });
       },
       {
         response: {
-          302: t.Null(),
+          303: t.Null(),
         },
         detail: {
           summary: "Refresh files cache",
+          description:
+            "Mutates files cache. Use POST. Returns 303 redirect to the canonical GET endpoint.",
           tags: ["app"],
         },
       }
@@ -463,7 +483,7 @@ export const createApp = async () =>
 
       if (prefersHtml) {
         if (typeof result === "object" && result !== null && !Array.isArray(result)) {
-          return new Response(objectToLinks(`/files/${path}`, result as Record<string, unknown>), {
+          return new Response(objectToLinks(`/files/${path}`, result as JsonObject), {
             headers: { "content-type": "text/html; charset=utf-8" },
           });
         }
@@ -513,7 +533,9 @@ export const createApp = async () =>
         const offset = parseInt(query.offset || "0", 10);
 
         const reposListCacheKey = `repos-list:${type}:${q}:${includeList.join(",")}:${fieldsList.join(",")}:${sort}:${limit}:${offset}`;
-        const cachedList = await cache.get<{ data: unknown[]; meta: { total: number; limit: number; offset: number; hasMore: boolean } }>(reposListCacheKey);
+        const cachedList = await cache.get<{ data: JsonObject[]; meta: PaginationMeta }>(
+          reposListCacheKey
+        );
         if (cachedList) {
           return createCachedJsonResponse(request, cachedList, 120);
         }
@@ -534,25 +556,14 @@ export const createApp = async () =>
 
         if (!repos) {
           const emptyPayload = {
-            data: [] as unknown[],
+            data: [] as JsonObject[],
             meta: { total: 0, limit, offset, hasMore: false },
           };
           await cache.set(reposListCacheKey, emptyPayload, CACHE_TTLS.short);
           return createCachedJsonResponse(request, emptyPayload, 120);
         }
 
-        let result = repos.map((repo) => formatBasicRepo(repo as unknown as GitHubRepo)) as Array<
-          Record<string, unknown> & {
-            owner?: { login?: string };
-            name?: string;
-            full_name?: string;
-            description?: string | null;
-            topics?: unknown;
-            stars?: number;
-            updated_at?: string;
-            html_url?: string;
-          }
-        >;
+        let result = repos.map((repo) => formatBasicRepo(repo as GitHubRepo)) as RepoListItem[];
 
         if (q) {
           result = await filterReposByQuery(result, q);
@@ -560,8 +571,15 @@ export const createApp = async () =>
 
         if (includeList.length > 0) {
           const filesData = await getCachedFilesData();
-          result = await Promise.all(
-            result.map(async (repo) => {
+          const includeOptions = convertIncludeListToOptions(includeList);
+          const reposByFullName = new Map<string, GitHubRepo>();
+          for (const rawRepo of repos) {
+            reposByFullName.set(rawRepo.full_name, rawRepo as GitHubRepo);
+          }
+
+          result = await mapWithConcurrency(
+            result,
+            async (repo) => {
               const owner = repo.owner?.login;
               const repoName = repo.name;
 
@@ -569,9 +587,7 @@ export const createApp = async () =>
                 return repo;
               }
 
-              const rawRepo = repos.find(
-                (r) => r.name === repoName && r.owner?.login === owner
-              ) as GitHubRepo | undefined;
+              const rawRepo = reposByFullName.get(`${owner}/${repoName}`);
               const cachedContent =
                 filesData != null
                   ? {
@@ -583,13 +599,13 @@ export const createApp = async () =>
               const enhanced = await fetchEnhancedRepositoryData(
                 repoName,
                 owner,
-                convertIncludeListToOptions(includeList),
+                includeOptions,
                 rawRepo ?? null,
                 cachedContent
               );
 
               return enhanced ? { ...repo, ...enhanced } : repo;
-            })
+            }
           );
         }
 
@@ -609,8 +625,8 @@ export const createApp = async () =>
               const description =
                 typeof repo.description === "string" ? ` - ${repo.description}` : "";
               const stars = typeof repo.stars === "number" ? ` ⭐ ${repo.stars}` : "";
-              const owner = (repo.owner as { login?: string })?.login || "unknown";
-              const repoName = typeof repo.name === "string" ? repo.name : "unknown";
+              const owner = repo.owner?.login || "n-a";
+              const repoName = typeof repo.name === "string" ? repo.name : "n-a";
               const safeHref = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}`;
               return `<li><a href="${escapeHtml(safeHref)}">${escapeHtml(repoName)}</a>${escapeHtml(description)}${stars}</li>`;
             })
@@ -641,10 +657,6 @@ export const createApp = async () =>
             offset: t.Optional(t.String()),
           })
         ),
-        response: {
-          200: t.Any(),
-          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
-        },
         detail: {
           summary: "List/search repositories",
           description:
@@ -676,7 +688,7 @@ export const createApp = async () =>
           };
         }
 
-        let result = repoData as Record<string, unknown>;
+        let result = repoData as JsonObject;
 
         const links = {
           readme: `/repos/${owner}/${repo}/readme`,
@@ -688,7 +700,7 @@ export const createApp = async () =>
         result._links = links;
 
         if (fieldsList.length > 0) {
-          result = selectFields(result, fieldsList);
+          result = selectFields(result, fieldsList) as JsonObject;
           if (!fieldsList.includes("_links")) {
             result._links = links;
           }
@@ -714,10 +726,6 @@ export const createApp = async () =>
             fields: t.Optional(t.String()),
           })
         ),
-        response: {
-          200: t.Any(),
-          404: t.Object({ error: t.String(), message: t.String() }),
-        },
         detail: {
           summary: "Get repository details",
           description:
@@ -740,11 +748,6 @@ export const createApp = async () =>
       },
       {
         params: t.Object({ owner: t.String(), repo: t.String() }),
-        response: {
-          200: t.Any(),
-          304: t.Null(),
-          404: t.Object({ error: t.String() }),
-        },
       }
     )
     .get(
@@ -759,10 +762,6 @@ export const createApp = async () =>
       },
       {
         params: t.Object({ owner: t.String(), repo: t.String() }),
-        response: {
-          200: t.Any(),
-          304: t.Null(),
-        },
       }
     )
     .get(
@@ -773,10 +772,6 @@ export const createApp = async () =>
       },
       {
         params: t.Object({ owner: t.String(), repo: t.String() }),
-        response: {
-          200: t.Any(),
-          304: t.Null(),
-        },
       }
     )
     .get(
@@ -793,11 +788,6 @@ export const createApp = async () =>
       },
       {
         params: t.Object({ owner: t.String(), repo: t.String() }),
-        response: {
-          200: t.Any(),
-          304: t.Null(),
-          404: t.Object({ error: t.String() }),
-        },
       }
     )
     .get(
@@ -812,10 +802,6 @@ export const createApp = async () =>
       },
       {
         params: t.Object({ owner: t.String(), repo: t.String() }),
-        response: {
-          200: t.Any(),
-          304: t.Null(),
-        },
       }
     )
     .get(
@@ -877,6 +863,6 @@ if (import.meta.main) {
   const listenOptions = env.PORT ? { port: env.PORT } : {};
   const instance = app.listen(listenOptions);
   const host = instance.server?.hostname ?? "localhost";
-  const port = instance.server?.port ?? env.PORT ?? "unknown";
+  const port = instance.server?.port ?? env.PORT ?? "n-a";
   console.log(`Elysia is running at http://${host}:${port}`);
 }

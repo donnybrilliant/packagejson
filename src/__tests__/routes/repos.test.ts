@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { JsonObject } from "@/types/json";
 import {
   createRequest,
   expectJsonContent,
@@ -19,7 +20,7 @@ describe("Repos Service", () => {
       expectJsonContent(response);
 
       const body = await parseJson<{
-        data: Array<Record<string, unknown>>;
+        data: JsonObject[];
         meta: { total: number; limit: number; offset: number; hasMore: boolean };
       }>(response);
 
@@ -34,7 +35,7 @@ describe("Repos Service", () => {
       const response = await handleRequest(request);
 
       expectStatus(response, 200);
-      const body = await parseJson<{ data: Array<Record<string, unknown>> }>(response);
+      const body = await parseJson<{ data: JsonObject[] }>(response);
 
       expect(body.data.length).toBeGreaterThan(0);
       const first = body.data[0];
@@ -48,7 +49,7 @@ describe("Repos Service", () => {
       const response = await handleRequest(request);
 
       expectStatus(response, 200);
-      const body = await parseJson<{ data: Array<Record<string, unknown>> }>(response);
+      const body = await parseJson<{ data: JsonObject[] }>(response);
 
       expect(body.data.length).toBe(1);
       const repo = body.data[0];
@@ -67,7 +68,7 @@ describe("Repos Service", () => {
       const response = await handleRequest(request);
 
       expectStatus(response, 200);
-      const body = await parseJson<{ data: Array<Record<string, unknown>> }>(response);
+      const body = await parseJson<{ data: JsonObject[] }>(response);
 
       expect(body.data.length).toBe(1);
       const repo = body.data[0];
@@ -122,7 +123,7 @@ describe("Repos Service", () => {
       const response = await handleRequest(request);
 
       expectStatus(response, 200);
-      const body = await parseJson<{ data: Record<string, unknown> }>(response);
+      const body = await parseJson<{ data: JsonObject }>(response);
 
       expect(body.data.name).toBe("test-repo");
       expect(body.data).toHaveProperty("readme");
@@ -163,7 +164,7 @@ describe("Repos Service", () => {
       );
 
       expectStatus(response, 200);
-      const body = await parseJson<{ data: { deployments: Array<Record<string, unknown>> } }>(
+      const body = await parseJson<{ data: { deployments: JsonObject[] } }>(
         response
       );
       expect(body.data.deployments.length).toBeGreaterThan(0);
@@ -176,7 +177,7 @@ describe("Repos Service", () => {
       );
 
       expectStatus(response, 200);
-      const body = await parseJson<{ data: { deployments: Array<Record<string, unknown>> } }>(
+      const body = await parseJson<{ data: { deployments: JsonObject[] } }>(
         response
       );
       expect(body.data.deployments.length).toBeGreaterThan(0);
@@ -214,9 +215,9 @@ describe("Repos Service", () => {
       const body = await parseJson<{
         data: {
           deployment_links: {
-            netlify: unknown;
-            vercel: Record<string, unknown> | null;
-            render: unknown;
+            netlify: JsonObject | null;
+            vercel: JsonObject | null;
+            render: JsonObject | null;
           } | null;
         };
       }>(response);

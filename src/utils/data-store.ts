@@ -2,18 +2,19 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import { env } from "@/env";
 import { getErrorMessage, isRecord } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import type { JsonObject, JsonValue } from "@/types/json";
 
 export type DataStore = {
-  cache?: Record<string, unknown>;
-  vfs?: Record<string, unknown>;
-  [key: string]: unknown;
+  cache?: JsonObject;
+  vfs?: JsonObject;
+  [key: string]: JsonValue | undefined;
 };
 
 const defaultStore = (): DataStore => ({});
 
 const parseStore = (raw: string): DataStore => {
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(raw) as JsonValue;
     if (isRecord(parsed)) {
       return parsed as DataStore;
     }

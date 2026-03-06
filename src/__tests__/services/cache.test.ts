@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCache } from "@/cache";
+import type { JsonValue } from "@/types/json";
 import { createDataStore } from "@/utils/data-store";
 
 const sleep = (ms: number) =>
@@ -19,13 +20,13 @@ async function waitForCacheFile(
   key: string,
   maxMs: number = 3000,
   intervalMs: number = 50
-): Promise<{ cache?: Record<string, { value?: unknown }> }> {
+): Promise<{ cache?: Record<string, { value?: JsonValue }> }> {
   const deadline = Date.now() + maxMs;
   let lastError: Error | null = null;
   while (Date.now() < deadline) {
     try {
       const raw = await readFile(dataJsonPath, "utf-8");
-      const parsed = JSON.parse(raw) as { cache?: Record<string, { value?: unknown }> };
+      const parsed = JSON.parse(raw) as { cache?: Record<string, { value?: JsonValue }> };
       if (parsed.cache?.[key] !== undefined) return parsed;
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
@@ -33,7 +34,7 @@ async function waitForCacheFile(
     await sleep(intervalMs);
   }
   throw new Error(
-    `Cache file did not contain key "${key}" within ${maxMs}ms. Last error: ${lastError?.message ?? "unknown"}`
+    `Cache file did not contain key "${key}" within ${maxMs}ms. Last error: ${lastError?.message ?? "n-a"}`
   );
 }
 

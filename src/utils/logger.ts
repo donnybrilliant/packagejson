@@ -1,4 +1,5 @@
 import { env } from "@/env";
+import type { JsonObject } from "@/types/json";
 
 type LogLevel = "info" | "error" | "warn" | "debug";
 
@@ -11,7 +12,7 @@ type LogLevel = "info" | "error" | "warn" | "debug";
 export const log = (
   level: LogLevel,
   message: string,
-  meta?: Record<string, unknown>
+  meta?: JsonObject
 ): void => {
   if (env.NODE_ENV === "test") return;
 
@@ -37,4 +38,3 @@ export const log = (
       break;
   }
 };
-

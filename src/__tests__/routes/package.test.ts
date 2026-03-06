@@ -72,19 +72,32 @@ describe("Package Service", () => {
   });
 
   describe("GET /package.json/refresh", () => {
-    test("redirects to /package.json", async () => {
+    test("is not available (refresh is POST-only)", async () => {
       const request = createRequest("/package.json/refresh");
       const response = await handleRequest(request);
 
-      expectStatus(response, 302);
+      expectStatus(response, 404);
+    });
+  });
+
+  describe("POST /package.json/refresh", () => {
+    test("refreshes cache and redirects to /package.json", async () => {
+      const request = createRequest("/package.json/refresh", {
+        method: "POST",
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 303);
       expect(response.headers.get("location")).toBe("/package.json?version=max");
     });
 
-    test("redirects with version parameter", async () => {
-      const request = createRequest("/package.json/refresh?version=min");
+    test("supports version parameter when refreshing cache", async () => {
+      const request = createRequest("/package.json/refresh?version=min", {
+        method: "POST",
+      });
       const response = await handleRequest(request);
 
-      expectStatus(response, 302);
+      expectStatus(response, 303);
       expect(response.headers.get("location")).toBe("/package.json?version=min");
     });
   });

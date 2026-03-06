@@ -1,8 +1,9 @@
 import { env } from "@/env";
 import { getErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import type { JsonObject, JsonValue } from "@/types/json";
 
-export type DeploymentItem = Record<string, unknown>;
+export type DeploymentItem = JsonObject;
 
 export type FetchResult =
   | {
@@ -20,7 +21,7 @@ type FetcherConfig = {
   platformName: "Netlify" | "Vercel" | "Render";
   token?: string;
   apiUrl: string;
-  transform: (input: unknown) => DeploymentItem[];
+  transform: (input: JsonValue) => DeploymentItem[];
 };
 
 const fetchPlatformDeployments = async ({
@@ -51,7 +52,7 @@ const fetchPlatformDeployments = async ({
       };
     }
 
-    const raw = (await res.json()) as unknown;
+    const raw = (await res.json()) as JsonValue;
     return {
       configured: true,
       data: transform(raw),
@@ -99,7 +100,7 @@ type RenderService = {
   type?: string | null;
 };
 
-const transformNetlify = (data: unknown): DeploymentItem[] => {
+const transformNetlify = (data: JsonValue): DeploymentItem[] => {
   if (!Array.isArray(data)) return [];
 
   return (data as NetlifySite[]).map((site) => ({
@@ -112,8 +113,8 @@ const transformNetlify = (data: unknown): DeploymentItem[] => {
   }));
 };
 
-const transformVercel = (data: unknown): DeploymentItem[] => {
-  const projects = (data as { projects?: VercelProject[] })?.projects;
+const transformVercel = (data: JsonValue): DeploymentItem[] => {
+  const projects = (data as { projects?: VercelProject[] } | null)?.projects;
   if (!Array.isArray(projects)) return [];
 
   return projects.map((project) => {
@@ -137,7 +138,7 @@ const transformVercel = (data: unknown): DeploymentItem[] => {
   });
 };
 
-const transformRender = (data: unknown): DeploymentItem[] => {
+const transformRender = (data: JsonValue): DeploymentItem[] => {
   if (!Array.isArray(data)) return [];
 
   return (data as RenderService[]).map((service) => ({

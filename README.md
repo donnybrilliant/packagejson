@@ -20,7 +20,7 @@ API service that connects your GitHub account to a single set of endpoints: aggr
 ### Package Aggregation
 
 - `GET /package.json?version=max|min|minmax`
-- `GET /package.json/refresh?version=max|min|minmax`
+- `POST /package.json/refresh?version=max|min|minmax` – refreshes cache, then redirects to `GET /package.json?...`
 
 ### Files / VFS
 
@@ -29,7 +29,7 @@ API service that connects your GitHub account to a single set of endpoints: aggr
   - root: `~`
   - children: `github`, `projects`
   - each contains converted repo directories/files
-- `GET /files/refresh`
+- `POST /files/refresh` – refreshes files cache, then redirects to `GET /files`
 - `GET /files/*` – traverse directories/files in the VFS
 
 ### Repositories

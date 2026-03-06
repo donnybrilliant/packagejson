@@ -2,6 +2,7 @@ import { cache } from "@/cache";
 import { CACHE_TTLS } from "@/env";
 import { getErrorMessage, isRecord } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import type { JsonObject, JsonValue } from "@/types/json";
 import { getNetlify, getRender, getVercel } from "@/services/deployments";
 import {
   fetchDeployments,
@@ -59,10 +60,12 @@ type EnhancedRepoOptions = {
 };
 
 type DeploymentLinks = {
-  netlify: Record<string, unknown> | null;
-  vercel: Record<string, unknown> | null;
-  render: Record<string, unknown> | null;
+  netlify: JsonObject | null;
+  vercel: JsonObject | null;
+  render: JsonObject | null;
 };
+
+const DEFAULT_ASYNC_CONCURRENCY = 8;
 
 export const DEFAULT_SEARCH_INCLUDE = [
   "readme",
@@ -80,7 +83,40 @@ export const parseCommaSeparatedList = (str: string | undefined): string[] => {
     .filter(Boolean);
 };
 
-export const selectFields = <T extends Record<string, unknown>>(
+const normalizeConcurrency = (value: number): number =>
+  Math.max(1, Number.isFinite(value) ? Math.floor(value) : DEFAULT_ASYNC_CONCURRENCY);
+
+export const mapWithConcurrency = async <T, R>(
+  items: T[],
+  mapper: (item: T, index: number) => Promise<R>,
+  concurrency = DEFAULT_ASYNC_CONCURRENCY
+): Promise<R[]> => {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const safeConcurrency = Math.min(normalizeConcurrency(concurrency), items.length);
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  const workers = Array.from({ length: safeConcurrency }, async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+
+      if (index >= items.length) {
+        return;
+      }
+
+      results[index] = await mapper(items[index], index);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+};
+
+export const selectFields = <T extends JsonObject>(
   obj: T,
   fields: string[]
 ): Partial<T> => {
@@ -141,7 +177,7 @@ export const paginate = <T>(
   };
 };
 
-export const formatBasicRepo = (repo: GitHubRepo): Record<string, unknown> => {
+export const formatBasicRepo = (repo: GitHubRepo): JsonObject => {
   const owner = repo.owner?.login ?? repo.full_name.split("/")[0];
 
   return {
@@ -193,10 +229,10 @@ export const convertIncludeListToOptions = (
 
 export const matchesRepoQuery = (
   repo: {
-    name?: unknown;
-    full_name?: unknown;
-    description?: unknown;
-    topics?: unknown;
+    name?: JsonValue;
+    full_name?: JsonValue;
+    description?: JsonValue;
+    topics?: JsonValue;
   },
   query: string
 ): boolean => {
@@ -224,7 +260,7 @@ export const filterReposByQuery = async <
     name?: string;
     full_name?: string;
     description?: string | null;
-    topics?: unknown;
+    topics?: JsonValue;
     owner?: { login?: string };
   }
 >(
@@ -246,8 +282,9 @@ export const filterReposByQuery = async <
     }
   }
 
-  const readmeResults = await Promise.all(
-    readmeCandidates.map(async (repo) => {
+  const readmeResults = await mapWithConcurrency(
+    readmeCandidates,
+    async (repo) => {
       const owner = repo.owner?.login;
       const name = repo.name;
       if (!owner || !name) return null;
@@ -258,7 +295,7 @@ export const filterReposByQuery = async <
       }
 
       return repo.full_name ?? `${owner}/${name}`;
-    })
+    }
   );
 
   for (const key of readmeResults) {
@@ -302,7 +339,7 @@ export const fetchNpmPackageInfo = async (
   repoName: string,
   owner: string,
   cachedPackageJsonContent?: string | null
-): Promise<Record<string, unknown> | null> => {
+): Promise<JsonObject | null> => {
   try {
     const packageJsonContent =
       cachedPackageJsonContent != null && typeof cachedPackageJsonContent === "string"
@@ -313,13 +350,13 @@ export const fetchNpmPackageInfo = async (
       return null;
     }
 
-    let packageJson: { name?: string; version?: string; repository?: unknown };
+    let packageJson: { name?: string; version?: string; repository?: JsonValue };
 
     try {
       packageJson = JSON.parse(packageJsonContent) as {
         name?: string;
         version?: string;
-        repository?: unknown;
+        repository?: JsonValue;
       };
     } catch {
       return null;
@@ -363,9 +400,9 @@ export const fetchDeploymentLinks = async (
     const cacheKey = "deployment-platforms";
 
     let platformsData = await cache.get<{
-      netlify: Record<string, unknown>[];
-      vercel: Record<string, unknown>[];
-      render: Record<string, unknown>[];
+      netlify: JsonObject[];
+      vercel: JsonObject[];
+      render: JsonObject[];
     }>(cacheKey);
 
     if (!platformsData) {
@@ -378,15 +415,15 @@ export const fetchDeploymentLinks = async (
       platformsData = {
         netlify:
           netlifyResult.configured && Array.isArray(netlifyResult.data)
-            ? (netlifyResult.data as Record<string, unknown>[])
+            ? (netlifyResult.data as JsonObject[])
             : [],
         vercel:
           vercelResult.configured && Array.isArray(vercelResult.data)
-            ? (vercelResult.data as Record<string, unknown>[])
+            ? (vercelResult.data as JsonObject[])
             : [],
         render:
           renderResult.configured && Array.isArray(renderResult.data)
-            ? (renderResult.data as Record<string, unknown>[])
+            ? (renderResult.data as JsonObject[])
             : [],
       };
 
@@ -458,8 +495,8 @@ export const fetchDeploymentLinks = async (
   }
 };
 
-const deploymentLinksToArray = (links: DeploymentLinks): Record<string, unknown>[] => {
-  const result: Record<string, unknown>[] = [];
+const deploymentLinksToArray = (links: DeploymentLinks): JsonObject[] => {
+  const result: JsonObject[] = [];
 
   if (links.netlify) {
     result.push({ platform: "netlify", source: "external", ...links.netlify });
@@ -478,8 +515,9 @@ const deploymentLinksToArray = (links: DeploymentLinks): Record<string, unknown>
 
 export const fetchRepositoryDeploymentsWithFallback = async (
   repoName: string,
-  owner: string
-): Promise<Record<string, unknown>[]> => {
+  owner: string,
+  getDeploymentLinks?: () => Promise<DeploymentLinks | null>
+): Promise<JsonObject[]> => {
   const githubDeployments = await fetchDeployments(repoName, owner);
 
   if (Array.isArray(githubDeployments) && githubDeployments.length > 0) {
@@ -489,7 +527,9 @@ export const fetchRepositoryDeploymentsWithFallback = async (
     }));
   }
 
-  const deploymentLinks = await fetchDeploymentLinks(repoName, owner);
+  const deploymentLinks = getDeploymentLinks
+    ? await getDeploymentLinks()
+    : await fetchDeploymentLinks(repoName, owner);
   if (!deploymentLinks) {
     return [];
   }
@@ -508,7 +548,7 @@ export const fetchEnhancedRepositoryData = async (
   options: EnhancedRepoOptions = {},
   existingRepo?: GitHubRepo | null,
   cachedContent?: CachedRepoContent | null
-): Promise<Record<string, unknown> | null> => {
+): Promise<JsonObject | null> => {
   const {
     includeReadme = true,
     includeLanguages = true,
@@ -534,7 +574,7 @@ export const fetchEnhancedRepositoryData = async (
     repo = repoData as GitHubRepo;
   }
 
-  const enhancedData: Record<string, unknown> = {
+  const enhancedData: JsonObject = {
     name: repo.name,
     full_name: repo.full_name,
     description: repo.description,
@@ -576,7 +616,15 @@ export const fetchEnhancedRepositoryData = async (
     pulls_url: repo.pulls_url,
   };
 
-  const additionalDataPromises: Promise<Record<string, unknown>>[] = [];
+  const additionalDataPromises: Promise<JsonObject>[] = [];
+  let deploymentLinksPromise: Promise<DeploymentLinks | null> | null = null;
+
+  const getDeploymentLinks = (): Promise<DeploymentLinks | null> => {
+    if (!deploymentLinksPromise) {
+      deploymentLinksPromise = fetchDeploymentLinks(repoName, owner);
+    }
+    return deploymentLinksPromise;
+  };
 
   const cachedReadme = cachedContent?.readme;
   if (includeReadme) {
@@ -597,7 +645,7 @@ export const fetchEnhancedRepositoryData = async (
 
   if (includeDeployments) {
     additionalDataPromises.push(
-      fetchRepositoryDeploymentsWithFallback(repoName, owner).then((deployments) => ({
+      fetchRepositoryDeploymentsWithFallback(repoName, owner, getDeploymentLinks).then((deployments) => ({
         deployments,
       }))
     );
@@ -614,7 +662,7 @@ export const fetchEnhancedRepositoryData = async (
 
   if (includeDeploymentLinks) {
     additionalDataPromises.push(
-      fetchDeploymentLinks(repoName, owner).then((deploymentLinks) => ({
+      getDeploymentLinks().then((deploymentLinks) => ({
         deployment_links: deploymentLinks,
       }))
     );

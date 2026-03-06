@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { JsonObject, JsonValue } from "@/types/json";
 import {
   createRequest,
   expectHtmlContent,
@@ -34,7 +35,7 @@ describe("Root Routes", () => {
       expectStatus(response, 200);
       expectJsonContent(response);
 
-      const body = await parseJson<{ links: unknown[] }>(response);
+      const body = await parseJson<{ links: JsonValue[] }>(response);
       expect(Array.isArray(body.links)).toBe(true);
       expect(body.links.length).toBe(3);
     });
@@ -98,7 +99,7 @@ describe("Root Routes", () => {
       expectStatus(response, 200);
       expectJsonContent(response);
 
-      const spec = await parseJson<{ paths?: Record<string, unknown> }>(response);
+      const spec = await parseJson<{ paths?: Record<string, JsonObject> }>(response);
       expect(spec.paths).toBeDefined();
       expect(spec.paths).not.toHaveProperty("/*");
     });
@@ -117,7 +118,7 @@ describe("Root Routes", () => {
   });
 
   describe("404 handling", () => {
-    test("returns deterministic 404 payload for unknown routes", async () => {
+    test("returns deterministic 404 payload for unmatched routes", async () => {
       const request = createRequest("/does-not-exist");
       const response = await handleRequest(request);
 

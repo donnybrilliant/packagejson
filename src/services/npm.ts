@@ -1,21 +1,22 @@
 import { env } from "@/env";
 import { getErrorMessage } from "@/utils/errors";
 import { log } from "@/utils/logger";
+import type { JsonObject, JsonValue } from "@/types/json";
 
 export type NpmInfo = {
   name: string;
   description: string | null;
   version?: string | null;
   homepage?: string | null;
-  repository?: unknown;
+  repository?: JsonValue;
   keywords?: string[];
-  license?: unknown;
-  author?: unknown;
-  maintainers?: unknown[];
-  time?: Record<string, unknown>;
+  license?: JsonValue;
+  author?: JsonValue;
+  maintainers?: JsonValue[];
+  time?: JsonObject;
   dist_tags?: Record<string, string>;
   versions?: string[];
-  latest_version_published?: unknown;
+  latest_version_published?: JsonValue;
   npm_link: string;
   exists: boolean;
 };
@@ -75,7 +76,7 @@ export const getNpmPackage = async (
       return null;
     }
 
-    const data = (await response.json()) as Record<string, unknown>;
+    const data = (await response.json()) as JsonObject;
 
     if (latestOnly) {
       return {
@@ -99,10 +100,10 @@ export const getNpmPackage = async (
 
     const distTags = data["dist-tags"] as Record<string, string> | undefined;
     const latestVersion = distTags?.latest ?? null;
-    const versions = data.versions as Record<string, unknown> | undefined;
+    const versions = data.versions as JsonObject | undefined;
     const latestVersionData =
       latestVersion && versions
-        ? (versions[latestVersion] as Record<string, unknown> | undefined)
+        ? (versions[latestVersion] as JsonObject | undefined)
         : undefined;
 
     return {
@@ -123,8 +124,8 @@ export const getNpmPackage = async (
           : [],
       license: latestVersionData?.license ?? data.license ?? null,
       author: latestVersionData?.author ?? data.author ?? null,
-      maintainers: Array.isArray(data.maintainers) ? (data.maintainers as unknown[]) : [],
-      time: isRecord(data.time) ? (data.time as Record<string, unknown>) : {},
+      maintainers: Array.isArray(data.maintainers) ? (data.maintainers as JsonValue[]) : [],
+      time: isRecord(data.time) ? (data.time as JsonObject) : {},
       dist_tags: distTags ?? {},
       versions: versions ? Object.keys(versions) : [],
       latest_version_published: latestVersionData?.publishTime ?? null,
@@ -140,6 +141,6 @@ export const getNpmPackage = async (
   }
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
+const isRecord = (value: JsonValue | undefined): value is JsonObject => {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 };

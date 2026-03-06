@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { JsonObject, JsonValue } from "@/types/json";
 import {
   createRequest,
   expectHtmlContent,
@@ -20,7 +21,7 @@ describe("Files Service", () => {
       expectStatus(response, 200);
       expectJsonContent(response);
 
-      const body = await parseJson<Record<string, unknown>>(response);
+      const body = await parseJson<JsonObject>(response);
       expect(typeof body).toBe("object");
       expect(body).toHaveProperty("test-repo");
     });
@@ -37,7 +38,7 @@ describe("Files Service", () => {
       const body = await parseJson<{
         name: string;
         type: string;
-        children?: Array<{ name: string; type: string; children?: unknown[] }>;
+        children?: Array<{ name: string; type: string; children?: JsonValue[] }>;
       }>(response);
 
       expect(body.name).toBe("~");
@@ -84,11 +85,22 @@ describe("Files Service", () => {
   });
 
   describe("GET /files/refresh", () => {
-    test("redirects to /files", async () => {
+    test("is not available (refresh is POST-only)", async () => {
       const request = createRequest("/files/refresh");
       const response = await handleRequest(request);
 
-      expectStatus(response, 302);
+      expectStatus(response, 404);
+    });
+  });
+
+  describe("POST /files/refresh", () => {
+    test("refreshes cache and redirects to /files", async () => {
+      const request = createRequest("/files/refresh", {
+        method: "POST",
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 303);
       expect(response.headers.get("location")).toBe("/files");
     });
   });
@@ -102,7 +114,7 @@ describe("Files Service", () => {
 
       expectStatus(response, 200);
       expectJsonContent(response);
-      const body = await parseJson<Record<string, unknown>>(response);
+      const body = await parseJson<JsonObject>(response);
       expect(body["index.ts"]).toBeDefined();
     });
 

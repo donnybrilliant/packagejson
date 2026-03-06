@@ -1,4 +1,5 @@
 import { createApp } from "@/index";
+import type { JsonObject } from "@/types/json";
 
 // Create app instance for tests (createApp is async)
 const appPromise = createApp();
@@ -79,7 +80,7 @@ export const expectHtmlContent = (response: Response): void => {
 /**
  * Parses JSON response body
  */
-export const parseJson = async <T = Record<string, unknown>>(
+export const parseJson = async <T = JsonObject>(
   response: Response
 ): Promise<T> => {
   return response.json() as Promise<T>;
@@ -91,4 +92,3 @@ export const parseJson = async <T = Record<string, unknown>>(
 export const parseText = async (response: Response): Promise<string> => {
   return response.text();
 };
-

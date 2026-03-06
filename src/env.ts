@@ -28,7 +28,7 @@ const DEFAULT_ROOT_DIR = path.resolve(
 );
 
 export const createEnv = (
-  source: EnvSource = Bun.env as unknown as EnvSource,
+  source: EnvSource = Bun.env as EnvSource,
   options: CreateEnvOptions = {}
 ) => {
   const NODE_ENV =
