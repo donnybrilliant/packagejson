@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>package.json</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app">
+    <header class="header">
+      <div>
+        <h1>package.json</h1>
+        <p>Simple JSON explorer for package, repo metadata, and repo file trees.</p>
+      </div>
+      <a class="docs-link" href="/docs" target="_blank" rel="noreferrer">Docs</a>
+    </header>
+
+    <section class="panel endpoint-panel">
+      <button type="button" class="endpoint-btn" data-path="/package.json"
+        data-label="package.json">package.json</button>
+      <button type="button" class="endpoint-btn" data-path="/repos?type=public" data-label="repos">repos</button>
+      <button type="button" class="endpoint-btn" data-path="/files?format=terminal" data-label="files">files</button>
+    </section>
+
+    <section class="panel status-panel">
+      <div class="status-item">
+        <span>Selected</span>
+        <strong id="selected-path">none</strong>
+      </div>
+      <div class="status-item">
+        <span>Request</span>
+        <strong id="status-badge" class="badge badge-idle">idle</strong>
+        <small id="response-time">--</small>
+      </div>
+      <div class="status-item">
+        <span>Source</span>
+        <strong id="cache-badge" class="badge badge-idle">none</strong>
+        <small id="cache-meta"></small>
+      </div>
+      <div class="status-item">
+        <span>Health</span>
+        <strong id="health-badge" class="badge badge-idle">checking</strong>
+        <small id="health-meta"></small>
+      </div>
+    </section>
+
+    <section class="panel explorer">
+      <div class="toolbar">
+        <button id="reload-btn" class="control-btn" disabled>Reload</button>
+        <button id="clear-btn" class="control-btn">Clear</button>
+      </div>
+
+      <div id="tree-root" class="tree-root">
+        <p class="placeholder">Choose an endpoint.</p>
+      </div>
+
+      <div class="preview">
+        <div id="preview-path" class="preview-path">No file selected</div>
+        <pre id="preview-content" class="preview-content"><code>Click a node to preview.</code></pre>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+
+</html>

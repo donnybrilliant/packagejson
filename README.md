@@ -1,484 +1,135 @@
-# packagejson
-
-## Overview
-
-`packagejson` is a Node.js API service that aggregates and analyzes package.json files across your GitHub repositories, while also providing comprehensive repository analytics, deployment information, and CI/CD status from various hosting platforms. It helps developers track dependencies, versions, deployments, and contribution activity across multiple projects.
-
-### Key Features
-
-- **Enhanced GitHub Integration**:
-
-  - Fetches all repositories with comprehensive metadata
-  - Analyzes dependencies across projects with version aggregation
-  - README content extraction for repository descriptions
-  - Complete language statistics (not just primary language)
-  - Contribution activity data (commit activity, contributors, code frequency)
-  - GitHub Actions workflows and CI/CD status
-  - Deployment information and status
-  - NPM package links with automatic detection
-  - Provides folder structure navigation
-  - Supports binary file handling (images, videos, etc.)
-
-- **Deployment Platform Integration**:
-
-  - **Automatic Deployment Links**: Automatically matches repositories to deployments on:
-    - Netlify deployments and site information
-    - Vercel project details with framework detection
-    - Render service status
-  - Manual platform endpoints for direct access
-
-- **NPM Package Registry Integration**:
-  - **Automatic Package Detection**: Checks if packages from repositories are published on npmjs
-    - Extracts package name from package.json
-    - Queries npmjs registry API to verify package existence
-    - Retrieves published package metadata (version, description, keywords, etc.)
-    - Detects CI/CD workflows that automate npm publishing
-  - Direct npmjs endpoint for querying any package: `/npmjs/:packageName`
-- **API Features**:
-  - RESTful endpoints with HTML/JSON responses
-  - Flexible query parameters for data filtering
-  - Swagger documentation at `/docs`
-  - Intelligent caching for improved performance
-  - Comprehensive error handling and logging
-
-## Installation
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/donnybrilliant/packagejson.git
-```
-
-2. Install dependencies:
-
-```bash
-cd packagejson
-npm install
-```
-
-3. Configure environment variables:
-
-   - Copy `.env.example` to `.env`:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   - Update the `.env` file with your credentials:
-
-     ```
-     # Required
-     USERNAME=your_github_username
-     GITHUB_TOKEN=your_github_personal_access_token
-
-     # Optional - for deployment platform integration
-     NETLIFY_TOKEN=your_netlify_token
-     VERCEL_TOKEN=your_vercel_token
-     RENDER_TOKEN=your_render_token
-
-     # Note: npmjs integration doesn't require authentication
-     # The npmjs registry API is public and accessible without tokens
-
-     # Server configuration (optional)
-     PORT=3000
-     NODE_ENV=development
-     ```
-
-## Usage
-
-### Starting the Server
-
-Development mode (with auto-reload):
-
-```bash
-npm run dev
-```
-
-Production mode:
-
-```bash
-npm start
-```
-
-### API Endpoints
-
-#### Basic Endpoints
-
-- `/` - Home page with navigation links
-- `/package.json` - Aggregated dependency information across repositories
-  - Query parameters: `version` (min, max, default: max)
-- `/package.json/refresh` - Refresh cached package data
-- `/files` - File structure navigation across repositories
-- `/docs` - Swagger API documentation
-
-#### Repository Endpoints
-
-**Collection Endpoint:**
-
-- `GET /repos` - List repositories with optional filtering and field selection
-
-  **Query Parameters:**
-
-  - `type` (string, default: "public") - Filter by visibility: `all`, `public`, or `private`
-  - `include` (string) - Comma-separated list of fields to include: `readme`, `languages`, `stats`, `releases`, `workflows`, `cicd`, `deployments`, `npm`, `deployment-links`
-  - `fields` (string) - Comma-separated list of specific fields to return (field selection)
-  - `sort` (string, default: "updated") - Sort by: `updated`, `stars`, or `name`
-  - `limit` (integer, default: 100) - Maximum number of repositories to return
-  - `offset` (integer, default: 0) - Number of repositories to skip (pagination)
-
-  **Examples:**
-
-  ```bash
-  # Basic repository list
-  GET /repos
-
-  # All repositories (public and private)
-  GET /repos?type=all
-
-  # Include specific fields
-  GET /repos?include=readme,languages,stats
-
-  # Select only specific fields
-  GET /repos?fields=name,description,stars,languages
-
-  # Sort by stars and paginate
-  GET /repos?sort=stars&limit=20&offset=0
-  ```
-
-**Single Repository Endpoint:**
-
-- `GET /repos/:owner/:repo` - Get detailed information about a specific repository
-
-  **Query Parameters:**
-
-  - `include` (string) - Comma-separated list of fields to include (if not specified, includes all by default)
-  - `fields` (string) - Comma-separated list of specific fields to return
-
-  **Examples:**
-
-  ```bash
-  # Get full repository details
-  GET /repos/username/repo-name
-
-  # Get only specific fields
-  GET /repos/username/repo-name?fields=name,description,stars,languages
-
-  # Include only certain expensive fields
-  GET /repos/username/repo-name?include=readme,stats
-  ```
-
-**Nested Resource Endpoints:**
-
-- `GET /repos/:owner/:repo/readme` - Get README content
-- `GET /repos/:owner/:repo/languages` - Get language statistics
-- `GET /repos/:owner/:repo/stats` - Get contribution statistics
-  - Query: `include` - Comma-separated: `commit_activity`, `contributors`, `code_frequency`, `participation`
-- `GET /repos/:owner/:repo/releases` - Get releases
-  - Query: `limit` (default: 10)
-- `GET /repos/:owner/:repo/workflows` - Get GitHub Actions workflows
-- `GET /repos/:owner/:repo/workflows/runs` - Get workflow runs
-  - Query: `limit` (default: 10)
-- `GET /repos/:owner/:repo/cicd` - Get CI/CD status
-- `GET /repos/:owner/:repo/deployments` - Get deployments
-  - Query: `limit` (default: 10)
-- `GET /repos/:owner/:repo/npm` - Get NPM package information
-- `GET /repos/:owner/:repo/deployment-links` - Get deployment links from external platforms
-
-**Examples:**
-
-```bash
-# Get README for a specific repo
-GET /repos/username/repo-name/readme
-
-# Get language statistics
-GET /repos/username/repo-name/languages
-
-# Get only commit activity stats
-GET /repos/username/repo-name/stats?include=commit_activity
-
-# Get recent releases
-GET /repos/username/repo-name/releases?limit=5
-```
-
-#### Deployment Platform Endpoints
-
-- `/netlify` - Netlify deployment information (requires NETLIFY_TOKEN)
-- `/vercel` - Vercel project details (requires VERCEL_TOKEN)
-- `/render` - Render service status (requires RENDER_TOKEN)
-
-**Note:** Deployment links are automatically included in enhanced repository data when platform tokens are configured.
-
-#### NPM Package Registry Endpoints
-
-- `GET /npmjs/:packageName` - Get npmjs package information for a specific package
-
-  - Query parameter: `latest` (boolean, default: false) - If true, returns only latest version information (faster)
-
-  **Examples:**
-
-  ```bash
-  # Get full package information
-  GET /npmjs/express
-
-  # Get only latest version (faster)
-  GET /npmjs/express?latest=true
-  ```
-
-**Note:** NPM package information is automatically included in repository data when a package.json file is present. The system checks if the package exists on npmjs and retrieves published package metadata.
-
-### Repository Data Structure
-
-When fetching repository data, the response follows a consistent structure:
-
-**Collection Response:**
-
-```json
-{
-  "data": [...],
-  "meta": {
-    "total": 100,
-    "limit": 50,
-    "offset": 0,
-    "hasMore": true
-  }
-}
-```
-
-**Single Resource Response:**
-
-```json
-{
-  "data": {
-    "name": "repo-name",
-    "full_name": "owner/repo-name",
-    ...
-  },
-  "_links": {
-    "readme": "/repos/owner/repo-name/readme",
-    "languages": "/repos/owner/repo-name/languages",
-    ...
-  }
-}
-```
-
-**Available Repository Fields:**
-
-#### Basic Information
-
-- Repository name, description, URLs
-- Stars, forks, watchers, open issues
-- Created, updated, and pushed dates
-- Topics/tags, license information
-- Default branch, repository size
-
-#### README Content
-
-- Full README content extracted from repository
-- Supports multiple README filename formats
-
-#### Language Statistics
-
-- All languages used in the repository (not just primary)
-- Byte counts for each language
-- Useful for repositories without package.json
-
-#### Contribution Statistics
-
-- **Commit Activity**: Weekly commit activity for the last year
-- **Contributors**: Contributor statistics with commit counts
-- **Code Frequency**: Additions and deletions per week
-- **Participation**: All commits vs owner commits breakdown
-
-#### GitHub Actions & CI/CD
-
-- **Workflows**: List of all GitHub Actions workflows
-- **Workflow Runs**: Recent workflow runs with status and conclusions
-- **CI/CD Status**: Latest CI/CD run status, conclusion, and links
-
-#### Deployments
-
-- **GitHub Deployments**: Deployment information with statuses
-- **External Platform Links**: Automatic matching to:
-  - Netlify sites (with SSL URL)
-  - Vercel projects (with framework detection)
-  - Render services
-
-#### NPM Package Information
-
-The npmjs integration works similarly to deployment platform integration, but queries the npmjs registry API to verify if packages are published:
-
-- **Package Detection**: Extracts package name from package.json
-- **npmjs API Integration**: Queries npmjs registry to verify if package exists and get published metadata
-- **CI/CD Workflow Detection**: Automatically detects GitHub Actions workflows that publish to npm
-- **Published Package Data**: If package exists on npmjs, includes:
-  - Published version (may differ from package.json version)
-  - Package description, homepage, repository
-  - Keywords, license, author, maintainers
-  - Distribution tags (latest, beta, etc.)
-  - Total number of published versions
-  - Latest version publication date
-
-**How it works:**
-
-1. Extracts package name from repository's package.json
-2. Queries npmjs registry API (`https://registry.npmjs.org/{packageName}`)
-3. Checks GitHub Actions workflows for npm publish automation
-4. Returns combined information about local package.json and published npmjs package
-
-**Note:** Unlike deployment platforms, npmjs doesn't provide a "list all packages" endpoint, so we query by package name extracted from each repository's package.json.
-
-### Example Responses
-
-**Collection Response:**
-
-```json
-{
-  "data": [
-    {
-      "name": "my-repo",
-      "full_name": "username/my-repo",
-      "description": "My awesome project",
-      "stars": 42,
-      "forks": 10,
-      "languages": {
-        "JavaScript": 50000,
-        "TypeScript": 30000
-      }
-    }
-  ],
-  "meta": {
-    "total": 25,
-    "limit": 10,
-    "offset": 0,
-    "hasMore": true
-  }
-}
-```
-
-**Single Repository with All Fields:**
-
-```json
-{
-  "data": {
-    "name": "my-repo",
-    "full_name": "username/my-repo",
-    "description": "My awesome project",
-    "stars": 42,
-    "forks": 10,
-    "languages": {
-      "JavaScript": 50000,
-      "TypeScript": 30000,
-      "CSS": 5000
-    },
-    "readme": "# My Awesome Project\n...",
-    "stats": {
-      "commit_activity": [...],
-      "contributors": [...],
-      "code_frequency": [...],
-      "participation": {...}
-    },
-    "workflows": [...],
-    "workflow_runs": {...},
-    "cicd_status": {
-      "status": "completed",
-      "conclusion": "success",
-      "html_url": "https://github.com/..."
-    },
-    "deployments": [...],
-    "deployment_links": {
-      "netlify": {
-        "name": "my-site",
-        "url": "https://my-site.netlify.app"
-      },
-      "vercel": {
-        "name": "my-project",
-        "url": "https://my-project.vercel.app",
-        "framework": "nextjs"
-      }
-    },
-    "npm": {
-      "package_name": "my-package",
-      "version": "1.0.0",
-      "npm_link": "https://www.npmjs.com/package/my-package",
-      "has_npm_publish_workflow": true,
-      "npm_publish_workflow": {
-        "id": 123456,
-        "name": "Publish to npm",
-        "path": ".github/workflows/publish.yml",
-        "state": "active",
-        "html_url": "https://github.com/..."
-      },
-      "repository": {
-        "type": "git",
-        "url": "https://github.com/username/my-repo.git"
-      },
-      "npmjs": {
-        "exists": true,
-        "published_version": "1.2.0",
-        "description": "My awesome package",
-        "homepage": "https://example.com",
-        "repository": {
-          "type": "git",
-          "url": "https://github.com/username/my-repo.git"
-        },
-        "keywords": ["package", "npm", "awesome"],
-        "license": "MIT",
-        "author": "John Doe",
-        "maintainers": [...],
-        "latest_version_published": "2024-01-15T10:30:00.000Z",
-        "dist_tags": {
-          "latest": "1.2.0",
-          "beta": "2.0.0-beta.1"
-        },
-        "total_versions": 15
-      }
-    }
-  },
-  "_links": {
-    "readme": "/repos/username/my-repo/readme",
-    "languages": "/repos/username/my-repo/languages",
-    "stats": "/repos/username/my-repo/stats",
-    "releases": "/repos/username/my-repo/releases",
-    "workflows": "/repos/username/my-repo/workflows",
-    "cicd": "/repos/username/my-repo/cicd",
-    "deployments": "/repos/username/my-repo/deployments",
-    "npm": "/repos/username/my-repo/npm",
-    "deployment-links": "/repos/username/my-repo/deployment-links"
-  }
-}
-```
-
-### Documentation
-
-Generate JSDoc documentation:
-
-```bash
-npm run docs
-```
-
-Access the documentation in the `docs/` directory.
-
-## Configuration
-
-Key configuration options in `config/index.js`:
-
-```javascript
-const USE_LOCAL_DATA = false; // Use cached data instead of fetching
-const SAVE_FILE = true; // Save fetched data to file
-const ONLY_SAVE_LINKS = true; // Only save links to binary files
-```
-
-### Caching
-
-- Package data: Cached for 1 week
-- File structure: Cached for 1 month
-- Deployment platform data: Cached for 1 hour (shared across requests)
-- npmjs package data: Fetched on-demand (no caching, as npmjs registry is public and fast)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-ISC
+# packagejson (Bun + Elysia)
+
+A simplified v1-aligned API for:
+- aggregated `package.json` data across GitHub repos,
+- full repo VFS traversal,
+- repo search + enrichment (README, languages, stars, deployments, npm package info).
+
+## Scripts
+
+- `bun run dev` – watch mode for `src/index.ts`
+- `bun start` – run the server
+- `bun test` – test suite
+- `bun lint` – Biome lint
+- `bun format` – Biome formatter
+- `bun x tsc --noEmit` – type-check
+
+## Core Endpoints
+
+- `GET /` – HTML links (browser) or JSON links
+- `GET /health` – health probe
+- `GET /docs` – OpenAPI docs
+
+### Package Aggregation
+
+- `GET /package.json?version=max|min|minmax`
+- `GET /package.json/refresh?version=max|min|minmax`
+
+### Files / VFS
+
+- `GET /files` – default v1-style nested object tree
+- `GET /files?format=terminal` – terminal-friendly `FileSystemItem` tree:
+  - root: `~`
+  - children: `github`, `projects`
+  - each contains converted repo directories/files
+- `GET /files/refresh`
+- `GET /files/*` – traverse directories/files in the VFS
+
+### Repositories
+
+- `GET /repos`
+  - query: `type`, `q`, `include`, `fields`, `sort`, `limit`, `offset`
+  - **Default include:** when `include` is omitted, responses include full enrichment: `readme`, `languages`, `deployments`, `npm`, `deployment-links`. Use `include=readme` (etc.) to request only specific fields.
+  - **Search:** `q` filters repos by substring match (case-insensitive) in `name`, `full_name`, `description`, `topics`, and README body.
+  - List responses are cached server-side by query (5 min); responses also send `Cache-Control` and `ETag` for client/HTTP caching.
+- `GET /repos/:owner/:repo` – when `include` is omitted, uses the same full default set as the list.
+- `GET /repos/:owner/:repo/readme`
+- `GET /repos/:owner/:repo/languages`
+- `GET /repos/:owner/:repo/deployments`
+- `GET /repos/:owner/:repo/npm`
+- `GET /repos/:owner/:repo/deployment-links`
+
+## Deployment + npm behavior
+
+- Deployments are resolved with fallback:
+  1. GitHub deployments
+  2. If none, external matches (Vercel/Netlify/Render) by exact repo URL match
+- npm package lookup is exact and uses only root `package.json` `name`.
+
+## Env
+
+- `PORT` (default `3000`)
+- `NODE_ENV` (default `development`)
+- `API_KEYS` (comma-separated accepted API keys)
+- `API_KEY_REQUIRED` (default `true` in production, `false` otherwise)
+- `API_KEY_ALLOW_X_HEADER` (default `true`; allows `x-api-key` fallback)
+- `TRUST_PROXY_HEADERS` (default `false`; trust `x-forwarded-for` family only behind trusted ingress)
+- `RATE_LIMIT_ENABLED` (default `true` in production, `false` otherwise)
+- `RATE_LIMIT_MAX` (default `120`)
+- `RATE_LIMIT_WINDOW_MS` (default `60000`)
+- `RATE_LIMIT_HEADERS` (default `true`)
+- `USERNAME`
+- `GITHUB_TOKEN`
+- `NETLIFY_TOKEN`, `VERCEL_TOKEN`, `RENDER_TOKEN` (optional fallback sources)
+- `CORS_ORIGIN` (default `*`; comma-separated allowlist supported)
+- `CORS_METHODS` (default `GET,POST,PUT,PATCH,DELETE,OPTIONS`)
+- `CORS_HEADERS` (default `Content-Type,Authorization,Accept`)
+- `CORS_EXPOSE_HEADERS` (optional)
+- `CORS_ALLOW_CREDENTIALS` (default `false`)
+- `CORS_MAX_AGE` (default `86400`)
+- `USE_LOCAL_DATA` (optional) – if true, `/files` reads local `data.json`
+- `SAVE_FILE` (optional) – if true, fetched VFS data is persisted to `data.json`
+- `ONLY_SAVE_LINKS` (optional) – when fetching live GitHub content, store links for binary/large files
+- `DATA_JSON_PATH` defaults to `<repo>/data.json`
+
+## Elysia plugins
+
+- `@elysiajs/openapi` for `/docs`
+- `@elysiajs/static` for static assets
+- `@elysiajs/cors` for CORS/preflight handling
+- `@elysiajs/bearer` for `Authorization: Bearer` API-key extraction
+- `elysia-rate-limit` for request throttling on API routes
+- Cache is intentionally custom (`src/cache.ts`) because we need TTL + development persistence into `data.json.cache`.
+
+## Auth and rate limiting
+
+- Protected API prefixes: `/package.json`, `/files`, `/repos`
+- Public routes: `/`, `/health`, `/docs`, static assets
+- Send API key using:
+  - `Authorization: Bearer <key>` (primary)
+  - `x-api-key: <key>` (optional fallback, controlled by env)
+- If `API_KEY_REQUIRED=true` and `API_KEYS` is empty, the server fails fast at startup.
+- `OPTIONS` preflight requests bypass API-key auth so browser CORS preflight is never blocked.
+- Rate limit key is `pathname + client IP` and only applies to protected API prefixes.
+- Browser note: API keys in React/browser clients are visible to users, so treat them as client identifiers, not secrets.
+- Backend note: API keys are appropriate for server-to-server clients because secrets remain on the server side.
+
+## Caching
+
+- Memory cache is always primary (process-local), with TTLs from `src/env.ts`.
+- HTTP responses for core JSON endpoints include `Cache-Control` + `ETag` and support conditional requests (`If-None-Match` -> `304`).
+- In development (`NODE_ENV=development`), generic cache is also persisted to `data.json.cache` for inspection.
+- On restart/redeploy, memory cache is cleared; development cache can be rehydrated from `data.json.cache`.
+- Current cache keys:
+  - `packageData-*` (`/package.json`) – 1 week
+  - `files` (`/files`) – 1 week
+  - `repos-list:*` (`GET /repos` by query params) – 5 min
+  - `deployment-platforms` (external deployment matching) – 1 hour
+- `data.json` namespaces:
+  - `cache`: generic cache entries (development persistence).
+  - `vfs`: files tree snapshot used by `/files`.
+- Files service behavior:
+  - `USE_LOCAL_DATA=true`: read VFS snapshot from `data.json.vfs`.
+  - `SAVE_FILE=true`: write fetched VFS snapshot to `data.json.vfs`.
+
+## Manual check
+
+1. `bun install`
+2. `bun run dev`
+3. Open [http://localhost:3000](http://localhost:3000)
+4. Check docs at [http://localhost:3000/docs](http://localhost:3000/docs)
+5. Quick API checks:
+   - `curl -H "Accept: application/json" http://localhost:3000/files`
+   - `curl -H "Accept: application/json" "http://localhost:3000/files?format=terminal"`
+   - `curl -H "Accept: application/json" http://localhost:3000/repos` (full list with default enrichment)
+   - `curl -H "Accept: application/json" "http://localhost:3000/repos?q=nebula"` (search)
