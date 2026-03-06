@@ -40,33 +40,38 @@ describe("Root Routes", () => {
     });
 
     test("includes CORS headers", async () => {
+      // Use localhost so both CORS_ORIGIN=* and allowlist with http://localhost accept it
+      const allowedOrigin = "http://localhost:5173";
       const request = createRequest("/", {
         headers: {
           accept: "application/json",
-          origin: "https://portfolio.example.com",
+          origin: allowedOrigin,
         },
       });
       const response = await handleRequest(request);
 
       expectStatus(response, 200);
-      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      const allowOrigin = response.headers.get("access-control-allow-origin");
+      expect(allowOrigin === "*" || allowOrigin === allowedOrigin).toBe(true);
       expect(response.headers.get("access-control-allow-methods")).toContain("OPTIONS");
     });
   });
 
   describe("CORS preflight", () => {
     test("returns 204 for OPTIONS requests", async () => {
+      const allowedOrigin = "http://localhost:5173";
       const request = createRequest("/", {
         method: "OPTIONS",
         headers: {
-          origin: "https://portfolio.example.com",
+          origin: allowedOrigin,
           "access-control-request-method": "GET",
         },
       });
       const response = await handleRequest(request);
 
       expectStatus(response, 204);
-      expect(response.headers.get("access-control-allow-origin")).toBe("*");
+      const allowOrigin = response.headers.get("access-control-allow-origin");
+      expect(allowOrigin === "*" || allowOrigin === allowedOrigin).toBe(true);
       expect(response.headers.get("access-control-allow-methods")).toContain("GET");
     });
   });
