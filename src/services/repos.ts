@@ -337,14 +337,10 @@ const parseRepoUrl = (repoUrl: string): { owner: string; name: string } | null =
 
 export const fetchNpmPackageInfo = async (
   repoName: string,
-  owner: string,
-  cachedPackageJsonContent?: string | null
+  owner: string
 ): Promise<JsonObject | null> => {
   try {
-    const packageJsonContent =
-      cachedPackageJsonContent != null && typeof cachedPackageJsonContent === "string"
-        ? cachedPackageJsonContent
-        : await fetchFileContent(repoName, "package.json", owner, false);
+    const packageJsonContent = await fetchFileContent(repoName, "package.json", owner, false);
 
     if (!packageJsonContent || typeof packageJsonContent !== "string") {
       return null;
@@ -537,17 +533,11 @@ export const fetchRepositoryDeploymentsWithFallback = async (
   return deploymentLinksToArray(deploymentLinks);
 };
 
-export type CachedRepoContent = {
-  readme?: string | null;
-  packageJson?: string | null;
-};
-
 export const fetchEnhancedRepositoryData = async (
   repoName: string,
   owner: string,
   options: EnhancedRepoOptions = {},
-  existingRepo?: GitHubRepo | null,
-  cachedContent?: CachedRepoContent | null
+  existingRepo?: GitHubRepo | null
 ): Promise<JsonObject | null> => {
   const {
     includeReadme = true,
@@ -626,13 +616,8 @@ export const fetchEnhancedRepositoryData = async (
     return deploymentLinksPromise;
   };
 
-  const cachedReadme = cachedContent?.readme;
   if (includeReadme) {
-    if (cachedReadme != null && typeof cachedReadme === "string") {
-      additionalDataPromises.push(Promise.resolve({ readme: cachedReadme }));
-    } else {
-      additionalDataPromises.push(fetchReadme(repoName, owner).then((readme) => ({ readme })));
-    }
+    additionalDataPromises.push(fetchReadme(repoName, owner).then((readme) => ({ readme })));
   }
 
   if (includeLanguages) {
@@ -651,13 +636,8 @@ export const fetchEnhancedRepositoryData = async (
     );
   }
 
-  const cachedPackageJson = cachedContent?.packageJson;
   if (includeNpm) {
-    additionalDataPromises.push(
-      fetchNpmPackageInfo(repoName, owner, cachedPackageJson ?? undefined).then((npm) => ({
-        npm,
-      }))
-    );
+    additionalDataPromises.push(fetchNpmPackageInfo(repoName, owner).then((npm) => ({ npm })));
   }
 
   if (includeDeploymentLinks) {

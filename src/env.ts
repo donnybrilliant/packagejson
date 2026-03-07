@@ -107,8 +107,8 @@ export const createEnv = (
       86_400,
     USE_LOCAL_DATA: toBool(source.USE_LOCAL_DATA, NODE_ENV === "development"),
     SAVE_FILE: toBool(source.SAVE_FILE, NODE_ENV === "development"),
-    /** When true, file tree stores GitHub links for files; when false, stores content (v1 parity) */
-    ONLY_SAVE_LINKS: toBool(source.ONLY_SAVE_LINKS, true),
+    /** When false, type=private and type=all are rejected on /repos and package aggregation uses public repos only. */
+    REPOS_ALLOW_PRIVATE: toBool(source.REPOS_ALLOW_PRIVATE, false),
     DATA_JSON_PATH: dataJsonPath,
   };
 };

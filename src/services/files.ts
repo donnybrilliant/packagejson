@@ -49,6 +49,47 @@ const isLikelyFilesData = (value: JsonValue | null): value is FilesData => {
   return Object.values(value).some((entry) => isRecord(entry));
 };
 
+/**
+ * Converts legacy flat keys (e.g. "docs/readme.md") into nested structure so getFileAtPath works.
+ * Old data.json with flat structure still passes isLikelyFilesData but traversal would 404; this
+ * normalizes once at load time so both formats work.
+ */
+const normalizeFlatKeysToNested = (obj: JsonObject): JsonObject => {
+  const result: JsonObject = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const normalizedValue = isRecord(value) ? normalizeFlatKeysToNested(value) : value;
+    if (key.includes("/")) {
+      const parts = key.split("/").filter(Boolean);
+      let current = result;
+      for (let i = 0; i < parts.length - 1; i += 1) {
+        const part = parts[i];
+        const existing = current[part];
+        if (!isRecord(existing)) {
+          current[part] = {};
+          current = current[part] as JsonObject;
+        } else {
+          current = existing as JsonObject;
+        }
+      }
+      const last = parts[parts.length - 1];
+      const existingLeaf = current[last];
+      if (isRecord(existingLeaf) && isRecord(normalizedValue)) {
+        current[last] = { ...normalizeFlatKeysToNested(existingLeaf), ...normalizeFlatKeysToNested(normalizedValue) };
+      } else {
+        current[last] = normalizedValue;
+      }
+    } else {
+      const existing = result[key];
+      if (isRecord(existing) && isRecord(normalizedValue)) {
+        result[key] = { ...normalizeFlatKeysToNested(existing), ...normalizeFlatKeysToNested(normalizedValue) };
+      } else {
+        result[key] = normalizedValue;
+      }
+    }
+  }
+  return result;
+};
+
 const isUrl = (value: string): boolean => {
   try {
     new URL(value);
@@ -101,7 +142,7 @@ const normalizeLoadedFilesData = (raw: JsonValue | undefined): FilesData | null 
     return null;
   }
 
-  return current as FilesData;
+  return normalizeFlatKeysToNested(current as JsonObject) as FilesData;
 };
 
 export const resolveFilesDataFromDataStore = (
@@ -175,12 +216,16 @@ export const fetchFilesData = async (): Promise<FilesData> => {
   if (env.NODE_ENV === "test") {
     const data: FilesData = {
       "test-repo": {
-        "package.json": '{"name":"@test/test-repo"}',
-        "README.md": "# test-repo\nThis repo is used for test fixtures.",
+        "package.json": "https://github.com/test-owner/test-repo/blob/main/package.json",
+        "README.md": "https://github.com/test-owner/test-repo/blob/main/README.md",
         src: {
-          "index.ts": "export default {};",
+          "index.ts": "https://github.com/test-owner/test-repo/blob/main/src/index.ts",
         },
-        "docs/readme.md": "hello docs",
+        docs: {
+          "readme.md": "https://github.com/test-owner/test-repo/blob/main/docs/readme.md",
+          "readme (1).md":
+            "https://github.com/test-owner/test-repo/blob/main/docs/readme%20%281%29.md",
+        },
       },
     };
 
@@ -203,7 +248,7 @@ export const fetchFilesData = async (): Promise<FilesData> => {
   } else {
     const cached = await cache.get<FilesData>(CACHE_KEY);
     if (cached && isLikelyFilesData(cached)) {
-      return cached;
+      return normalizeFlatKeysToNested(cached as JsonObject) as FilesData;
     }
 
     if (cached) {
@@ -213,11 +258,15 @@ export const fetchFilesData = async (): Promise<FilesData> => {
   }
 
   const data: FilesData = {};
-  const repos = await getRepositories();
+  const repos = await getRepositories(env.REPOS_ALLOW_PRIVATE ? "all" : "public");
   if (repos) {
     for (const repo of repos) {
       const owner = repo.owner?.login ?? repo.full_name.split("/")[0];
-      const folderStructure = await fetchFolderStructure(repo.name, "", owner);
+      const defaultBranch =
+        typeof repo.default_branch === "string" && repo.default_branch.length > 0
+          ? repo.default_branch
+          : "HEAD";
+      const folderStructure = await fetchFolderStructure(repo.name, "", owner, defaultBranch);
       data[repo.name] = folderStructure && isRecord(folderStructure) ? folderStructure : {};
     }
   }
@@ -237,12 +286,6 @@ export const refreshFilesData = async (): Promise<void> => {
   await fetchFilesData();
 };
 
-/** Returns cached files/VFS data without fetching; used to reuse readme/package.json in repos to reduce GitHub API calls. */
-export const getCachedFilesData = async (): Promise<FilesData | null> => {
-  const raw = await cache.get<FilesData>(CACHE_KEY);
-  return raw && isLikelyFilesData(raw) ? raw : null;
-};
-
 export const getFileAtPath = (
   data: FilesData,
   pathSegments: string[]
@@ -253,46 +296,20 @@ export const getFileAtPath = (
 
   let current: JsonValue = data;
   for (const segment of pathSegments) {
-    const decoded = decodeURIComponent(segment);
-    if (isRecord(current)) {
-      current = current[decoded];
-      if (current === undefined) {
+    const decodedParts = decodeURIComponent(segment).split("/").filter(Boolean);
+    for (const decoded of decodedParts) {
+      if (isRecord(current)) {
+        current = current[decoded];
+        if (current === undefined) {
+          return null;
+        }
+      } else {
         return null;
       }
-    } else {
-      return null;
     }
   }
 
   return current;
-};
-
-const README_NAMES = ["README.md", "README.txt", "README", "readme.md", "readme.txt", "readme"];
-
-/** Returns README content for a repo from files data if present; avoids GitHub API when building repos list. */
-export const getReadmeFromFilesData = (
-  data: FilesData,
-  repoName: string
-): string | null => {
-  for (const name of README_NAMES) {
-    const value = getFileAtPath(data, [repoName, name]);
-    if (typeof value === "string" && !value.startsWith("http")) {
-      return value;
-    }
-  }
-  return null;
-};
-
-/** Returns package.json content for a repo from files data if present; avoids GitHub API when building repos list. */
-export const getPackageJsonFromFilesData = (
-  data: FilesData,
-  repoName: string
-): string | null => {
-  const value = getFileAtPath(data, [repoName, "package.json"]);
-  if (typeof value === "string") {
-    return value;
-  }
-  return null;
 };
 
 const toFileSystemItem = (name: string, value: JsonValue): FileSystemItem => {

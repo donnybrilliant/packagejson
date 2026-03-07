@@ -8,7 +8,9 @@ describe("Files service helpers", () => {
       src: {
         "index.ts": "export default {};",
       },
-      "docs/readme.md": "hello docs",
+      docs: {
+        "readme.md": "hello docs",
+      },
     },
   };
 
@@ -84,5 +86,27 @@ describe("Files service helpers", () => {
     });
 
     expect(resolved).toBeNull();
+  });
+
+  test("normalizes legacy flat keys (e.g. docs/readme.md) so getFileAtPath can traverse", () => {
+    const flatLegacy = {
+      "repo-flat": {
+        "package.json": "{}",
+        "docs/readme.md": "hello from flat",
+        "src/index.ts": "export {};",
+      },
+    };
+
+    const resolved = resolveFilesDataFromDataStore(flatLegacy);
+    expect(resolved).not.toBeNull();
+    if (!resolved) throw new Error("expected resolved to be non-null");
+
+    expect(getFileAtPath(resolved, ["repo-flat", "package.json"])).toBe("{}");
+    expect(getFileAtPath(resolved, ["repo-flat", "docs", "readme.md"])).toBe(
+      "hello from flat"
+    );
+    expect(getFileAtPath(resolved, ["repo-flat", "src", "index.ts"])).toBe(
+      "export {};"
+    );
   });
 });

@@ -137,7 +137,7 @@ export const fetchAggregatedData = async (
   }
 
   try {
-    const repos = await getRepositories("all");
+    const repos = await getRepositories(env.REPOS_ALLOW_PRIVATE ? "all" : "public");
     if (!repos || repos.length === 0) {
       return { dependencies: {}, devDependencies: {} };
     }

@@ -24,13 +24,14 @@ API service that connects your GitHub account to a single set of endpoints: aggr
 
 ### Files / VFS
 
-- `GET /files` – nested object tree of repo files
+- `GET /files` – nested object tree of repo directories + GitHub file links
 - `GET /files?format=terminal` – terminal-friendly `FileSystemItem` tree:
   - root: `~`
   - children: `github`, `projects`
-  - each contains converted repo directories/files
+  - same file tree, just wrapped in a typed terminal-friendly shape
 - `POST /files/refresh` – refreshes files cache, then redirects to `GET /files`
-- `GET /files/*` – traverse directories/files in the VFS
+- `GET /files/*` – traverse directories/files in the VFS; files return GitHub links by default
+- `GET /files/*?content=true` – fetch exact file contents on demand for that one file path
 
 ### Repositories
 
@@ -74,9 +75,9 @@ API service that connects your GitHub account to a single set of endpoints: aggr
 - `CORS_EXPOSE_HEADERS` (optional)
 - `CORS_ALLOW_CREDENTIALS` (default `false`)
 - `CORS_MAX_AGE` (default `86400`)
-- `USE_LOCAL_DATA` (optional) – if true, `/files` reads local `data.json`
-- `SAVE_FILE` (optional) – if true, fetched VFS data is persisted to `data.json`
-- `ONLY_SAVE_LINKS` (optional) – when fetching live GitHub content, store links for binary/large files
+- `USE_LOCAL_DATA` (optional) – if true, `/files` reads the file tree snapshot from `data.json` (e.g. prebuilt or cached)
+- `SAVE_FILE` (optional) – if true, the generated `/files` tree snapshot is persisted to `data.json`
+- `REPOS_ALLOW_PRIVATE` (optional, default `false`) – if false, `GET /repos?type=private` and `type=all` return 403, and aggregated `/package.json` uses public repos only; set to `true` to allow listing private repos
 - `DATA_JSON_PATH` defaults to `<repo>/data.json`
 
 ## Elysia plugins

@@ -10,6 +10,30 @@ import {
 
 describe("Repos Service", () => {
   describe("GET /repos", () => {
+    test("returns 403 for type=private when REPOS_ALLOW_PRIVATE is false", async () => {
+      const request = createRequest("/repos?type=private", {
+        headers: { accept: "application/json" },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 403);
+      expectJsonContent(response);
+      const body = await parseJson<{ error: string; message?: string }>(response);
+      expect(body.error).toBe("Private repository listing is disabled");
+      expect(body.message).toContain("REPOS_ALLOW_PRIVATE");
+    });
+
+    test("returns 403 for type=all when REPOS_ALLOW_PRIVATE is false", async () => {
+      const request = createRequest("/repos?type=all", {
+        headers: { accept: "application/json" },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 403);
+      const body = await parseJson<{ error: string }>(response);
+      expect(body.error).toBe("Private repository listing is disabled");
+    });
+
     test("returns repository collection with pagination metadata", async () => {
       const request = createRequest("/repos", {
         headers: { accept: "application/json" },

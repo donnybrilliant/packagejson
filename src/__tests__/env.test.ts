@@ -38,4 +38,20 @@ describe("Environment defaults", () => {
     expect(env.USE_LOCAL_DATA).toBe(true);
     expect(env.SAVE_FILE).toBe(true);
   });
+
+  test("defaults REPOS_ALLOW_PRIVATE to false", () => {
+    const env = createEnv(
+      {},
+      { nodeEnv: "production", rootDir: "/tmp" }
+    );
+    expect(env.REPOS_ALLOW_PRIVATE).toBe(false);
+  });
+
+  test("respects REPOS_ALLOW_PRIVATE when set to true", () => {
+    const env = createEnv(
+      { REPOS_ALLOW_PRIVATE: "true" },
+      { nodeEnv: "production", rootDir: "/tmp" }
+    );
+    expect(env.REPOS_ALLOW_PRIVATE).toBe(true);
+  });
 });

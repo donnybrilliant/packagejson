@@ -118,8 +118,20 @@ describe("Files Service", () => {
       expect(body["index.ts"]).toBeDefined();
     });
 
-    test("returns file content for file path", async () => {
+    test("returns GitHub link for file path by default", async () => {
       const request = createRequest("/files/test-repo/src/index.ts", {
+        headers: { accept: "application/json" },
+      });
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      expectJsonContent(response);
+      const body = await parseJson<{ file: string }>(response);
+      expect(body.file).toBe("https://github.com/test-owner/test-repo/blob/main/src/index.ts");
+    });
+
+    test("supports on-demand file content for exact file paths", async () => {
+      const request = createRequest("/files/test-repo/src/index.ts?content=true", {
         headers: { accept: "application/json" },
       });
       const response = await handleRequest(request);
@@ -130,7 +142,7 @@ describe("Files Service", () => {
     });
 
     test("supports URL-encoded path segments", async () => {
-      const request = createRequest("/files/test-repo/docs%2Freadme.md", {
+      const request = createRequest("/files/test-repo/docs%2Freadme.md?content=true", {
         headers: { accept: "application/json" },
       });
       const response = await handleRequest(request);
@@ -138,6 +150,21 @@ describe("Files Service", () => {
       expectStatus(response, 200);
       const body = await parseText(response);
       expect(body).toContain("hello docs");
+    });
+
+    test("returns blob URL with encoded path for files containing special characters", async () => {
+      const request = createRequest(
+        "/files/test-repo/docs/readme%20%281%29.md",
+        { headers: { accept: "application/json" } }
+      );
+      const response = await handleRequest(request);
+
+      expectStatus(response, 200);
+      expectJsonContent(response);
+      const body = await parseJson<{ file: string }>(response);
+      expect(body.file).toBe(
+        "https://github.com/test-owner/test-repo/blob/main/docs/readme%20%281%29.md"
+      );
     });
 
     test("returns strict 404 for non-existent path", async () => {

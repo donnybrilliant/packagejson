@@ -12,10 +12,7 @@ import { join } from "node:path";
 import { fetchAggregatedData } from "@/services/package";
 import {
   fetchFilesData,
-  getCachedFilesData,
   getFileAtPath,
-  getPackageJsonFromFilesData,
-  getReadmeFromFilesData,
   refreshFilesData,
   toTerminalFileSystem,
 } from "@/services/files";
@@ -36,6 +33,7 @@ import {
   type GitHubRepo,
 } from "@/services/repos";
 import {
+  fetchFileContent,
   fetchReadme,
   fetchRepositoryLanguages,
   getRepositories,
@@ -437,7 +435,7 @@ export const createApp = async () =>
         detail: {
           summary: "File system tree",
           description:
-            "Returns v1-style VFS object by default, or FileSystemItem root when format=terminal.",
+            "Returns a nested repo tree with GitHub file links by default, or the same tree as a FileSystemItem root when format=terminal.",
           tags: ["app"],
         },
       }
@@ -463,66 +461,149 @@ export const createApp = async () =>
         },
       }
     )
-    .get("/files/*", async ({ params, request, set }) => {
-      const path = params["*"];
-      if (!path) {
-        set.status = 404;
-        return { error: "File or directory not found" };
-      }
-
-      const data = await fetchFilesData();
-      const pathSegments = path.split("/").filter(Boolean);
-      const result = getFileAtPath(data, pathSegments);
-
-      if (result === null || result === undefined) {
-        set.status = 404;
-        return { error: "File or directory not found" };
-      }
-
-      const prefersHtml = (request.headers.get("accept") ?? "").includes("text/html");
-
-      if (prefersHtml) {
-        if (typeof result === "object" && result !== null && !Array.isArray(result)) {
-          return new Response(objectToLinks(`/files/${path}`, result as JsonObject), {
-            headers: { "content-type": "text/html; charset=utf-8" },
-          });
+    .get(
+      "/files/*",
+      async ({ params, query, request, set }) => {
+        const path = params["*"];
+        if (!path) {
+          set.status = 404;
+          return { error: "File or directory not found" };
         }
 
-        if (typeof result === "string") {
-          if (isUrl(result)) {
-            const safeUrl = safeHrefUrl(result) ?? "#";
-            const displayName = pathSegments[pathSegments.length - 1] ?? "";
-            return new Response(
-              `<a href="${escapeHtml(safeUrl)}">${escapeHtml(displayName)}</a>`,
-              { headers: { "content-type": "text/html; charset=utf-8" } }
-            );
+        try {
+          const data = await fetchFilesData();
+          const pathSegments = path.split("/").filter(Boolean);
+          const result = getFileAtPath(data, pathSegments);
+
+          if (result === null || result === undefined) {
+            set.status = 404;
+            return { error: "File or directory not found" };
           }
 
-          return new Response(result, {
-            headers: { "content-type": "text/plain; charset=utf-8" },
-          });
+          const wantsContent = query.content === "true" || query.content === "1";
+          const prefersHtml = (request.headers.get("accept") ?? "").includes("text/html");
+
+          if (wantsContent && typeof result === "string" && isUrl(result)) {
+            const repoName = pathSegments[0];
+            const filePath = pathSegments
+              .slice(1)
+              .map((segment) => decodeURIComponent(segment))
+              .join("/");
+
+            if (!repoName || !filePath) {
+              set.status = 400;
+              return { error: "content=true requires an exact file path" };
+            }
+
+            const repos = await getRepositories(env.REPOS_ALLOW_PRIVATE ? "all" : "public");
+            const repo = repos?.find((entry) => entry.name === repoName);
+            if (!repo) {
+              set.status = 404;
+              return { error: "Repository not found for file path" };
+            }
+
+            const owner = repo.owner?.login ?? repo.full_name.split("/")[0];
+            const content = await fetchFileContent(repoName, filePath, owner, false);
+            if (!content) {
+              set.status = 404;
+              return { error: "File content not found" };
+            }
+
+            if (isUrl(content)) {
+              return createCachedJsonResponse(request, { file: content }, 120);
+            }
+
+            return new Response(content, {
+              headers: {
+                "content-type": "text/plain; charset=utf-8",
+                "cache-control": "public, max-age=120, stale-while-revalidate=240",
+              },
+            });
+          }
+
+          if (prefersHtml) {
+            if (typeof result === "object" && result !== null && !Array.isArray(result)) {
+              return new Response(objectToLinks(`/files/${path}`, result as JsonObject), {
+                headers: { "content-type": "text/html; charset=utf-8" },
+              });
+            }
+
+            if (typeof result === "string") {
+              if (isUrl(result)) {
+                const safeUrl = safeHrefUrl(result) ?? "#";
+                const displayName = pathSegments[pathSegments.length - 1] ?? "";
+                return new Response(
+                  `<a href="${escapeHtml(safeUrl)}">${escapeHtml(displayName)}</a>`,
+                  { headers: { "content-type": "text/html; charset=utf-8" } }
+                );
+              }
+
+              return new Response(result, {
+                headers: { "content-type": "text/plain; charset=utf-8" },
+              });
+            }
+          }
+
+          if (typeof result === "string" && isUrl(result)) {
+            return createCachedJsonResponse(request, { file: result }, 120);
+          }
+
+          if (typeof result === "string") {
+            return new Response(result, {
+              headers: {
+                "content-type": "text/plain; charset=utf-8",
+                "cache-control": "public, max-age=120, stale-while-revalidate=240",
+              },
+            });
+          }
+
+          return createCachedJsonResponse(request, result, 120);
+        } catch (error) {
+          if (error instanceof GitHubRateLimitError) {
+            set.status = 503;
+            return {
+              error: "GitHub API rate limit exceeded",
+              message: "Try again later or ensure GITHUB_TOKEN is set for higher limits.",
+            };
+          }
+          throw error;
         }
+      },
+      {
+        query: t.Optional(
+          t.Object({
+            content: t.Optional(t.String()),
+          })
+        ),
+        response: {
+          200: t.Any(),
+          400: t.Object({ error: t.String() }),
+          404: t.Object({ error: t.String() }),
+          503: t.Object({ error: t.String(), message: t.Optional(t.String()) }),
+        },
+        detail: {
+          summary: "Browse files or fetch exact file content",
+          description:
+            "Returns directories and GitHub file links by default. Use content=true on an exact file path to fetch file contents on demand.",
+          tags: ["app"],
+        },
       }
-
-      if (typeof result === "string" && isUrl(result)) {
-        return createCachedJsonResponse(request, { file: result }, 120);
-      }
-
-      if (typeof result === "string") {
-        return new Response(result, {
-          headers: {
-            "content-type": "text/plain; charset=utf-8",
-            "cache-control": "public, max-age=120, stale-while-revalidate=240",
-          },
-        });
-      }
-
-      return createCachedJsonResponse(request, result, 120);
-    })
+    )
     .get(
       "/repos",
       async ({ query, request, set }) => {
         const type = query.type || "public";
+        if (
+          (type === "private" || type === "all") &&
+          !env.REPOS_ALLOW_PRIVATE
+        ) {
+          set.status = 403;
+          return {
+            error: "Private repository listing is disabled",
+            message:
+              "Set REPOS_ALLOW_PRIVATE=true on the server to allow type=private and type=all.",
+          };
+        }
         const q = (query.q || "").trim();
         const fieldsList = parseCommaSeparatedList(query.fields || "");
         const includeFromQuery = parseCommaSeparatedList(query.include || "");
@@ -570,7 +651,6 @@ export const createApp = async () =>
         }
 
         if (includeList.length > 0) {
-          const filesData = await getCachedFilesData();
           const includeOptions = convertIncludeListToOptions(includeList);
           const reposByFullName = new Map<string, GitHubRepo>();
           for (const rawRepo of repos) {
@@ -588,20 +668,12 @@ export const createApp = async () =>
               }
 
               const rawRepo = reposByFullName.get(`${owner}/${repoName}`);
-              const cachedContent =
-                filesData != null
-                  ? {
-                      readme: getReadmeFromFilesData(filesData, repoName),
-                      packageJson: getPackageJsonFromFilesData(filesData, repoName),
-                    }
-                  : null;
 
               const enhanced = await fetchEnhancedRepositoryData(
                 repoName,
                 owner,
                 includeOptions,
-                rawRepo ?? null,
-                cachedContent
+                rawRepo ?? null
               );
 
               return enhanced ? { ...repo, ...enhanced } : repo;
@@ -657,10 +729,17 @@ export const createApp = async () =>
             offset: t.Optional(t.String()),
           })
         ),
+        response: {
+          200: t.Any(),
+          403: t.Object({
+            error: t.String(),
+            message: t.Optional(t.String()),
+          }),
+        },
         detail: {
           summary: "List/search repositories",
           description:
-            "Returns repos with default full enrichment (readme, languages, deployments, npm, deployment-links) when include is omitted. Use include to request specific fields. Query q filters by name, full_name, description, topics, and README. Responses are cached server-side by query (5 min) and support Cache-Control/ETag.",
+            "Returns repos with default full enrichment (readme, languages, deployments, npm, deployment-links) when include is omitted. Use include to request specific fields. Query q filters by name, full_name, description, topics, and README. When REPOS_ALLOW_PRIVATE is false, type=private and type=all return 403. Responses are cached server-side by query (5 min) and support Cache-Control/ETag.",
           tags: ["app"],
         },
       }

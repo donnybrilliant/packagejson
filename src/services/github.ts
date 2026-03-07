@@ -57,12 +57,24 @@ type GitHubContentItem = {
   message?: string;
 };
 
+type GitHubTreeItem = {
+  path: string;
+  type: "blob" | "tree";
+  size?: number;
+};
+
+type GitHubTreeResponse = {
+  tree?: GitHubTreeItem[];
+  truncated?: boolean;
+};
+
 type TestRepositoryFixture = {
   repo: GitHubRepo;
   readme: string;
   languages: Record<string, number>;
   packageJson: JsonObject;
   deployments: JsonObject[];
+  files: Record<string, string>;
 };
 
 const TEST_REPOSITORIES: TestRepositoryFixture[] = [
@@ -114,6 +126,13 @@ const TEST_REPOSITORIES: TestRepositoryFixture[] = [
       name: "@test/test-repo",
       version: "1.2.3",
       repository: "https://github.com/test-owner/test-repo",
+    },
+    files: {
+      "package.json": '{"name":"@test/test-repo"}',
+      "README.md": "# test-repo\nThis repo is used for test fixtures.",
+      "src/index.ts": "export default {};",
+      "docs/readme.md": "hello docs",
+      "docs/readme (1).md": "file with space and parens in path",
     },
     deployments: [
       {
@@ -182,6 +201,10 @@ const TEST_REPOSITORIES: TestRepositoryFixture[] = [
       version: "0.1.0",
       repository: "https://github.com/test-owner/readme-only-repo",
     },
+    files: {
+      "package.json": '{"name":"@test/missing-package"}',
+      "README.md": "# readme-only-repo\n\nThis README contains the nebula keyword for search tests.",
+    },
     deployments: [],
   },
 ];
@@ -221,6 +244,60 @@ const isVideo = (data: GitHubContentItem): boolean => {
 
 const isOtherBinary = (data: GitHubContentItem): boolean => {
   return data.type === "file" && (data.size ?? 0) > 1_000_000;
+};
+
+const createGitHubBlobUrl = (
+  owner: string,
+  repoName: string,
+  ref: string,
+  filePath: string,
+): string => {
+  const encodedRef = ref
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const encodedPath = filePath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `https://github.com/${owner}/${repoName}/blob/${encodedRef}/${encodedPath}`;
+};
+
+const assignNestedPath = (
+  root: JsonObject,
+  filePath: string,
+  value: string,
+): void => {
+  const segments = filePath.split("/").filter(Boolean);
+  if (segments.length === 0) return;
+
+  let current = root;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    const segment = segments[i];
+    const existing = current[segment];
+    if (!isRecord(existing)) {
+      current[segment] = {};
+    }
+    current = current[segment] as JsonObject;
+  }
+
+  current[segments[segments.length - 1]] = value;
+};
+
+const buildTestFolderStructure = (
+  fixture: TestRepositoryFixture,
+  owner: string,
+  ref: string,
+): JsonObject => {
+  const structure: JsonObject = {};
+  for (const filePath of Object.keys(fixture.files)) {
+    assignNestedPath(
+      structure,
+      filePath,
+      createGitHubBlobUrl(owner, fixture.repo.name, ref, filePath),
+    );
+  }
+  return structure;
 };
 
 /**
@@ -278,12 +355,15 @@ const MAX_REPOS_PAGES = 50;
  * @returns Promise that resolves to an array of repositories or null
  */
 export const getRepositories = async (type: string = "public"): Promise<GitHubRepo[] | null> => {
+  const effectiveType =
+    (type === "private" || type === "all") && !env.REPOS_ALLOW_PRIVATE ? "public" : type;
+
   if (env.NODE_ENV === "test") {
-    if (type === "private") return [];
+    if (effectiveType === "private") return [];
     return TEST_REPOSITORIES.map((fixture) => fixture.repo);
   }
 
-  const cacheKey = `${REPOS_CACHE_KEY_PREFIX}${type}`;
+  const cacheKey = `${REPOS_CACHE_KEY_PREFIX}${effectiveType}`;
   const cached = await cache.get<GitHubRepo[]>(cacheKey);
   if (cached && isArray(cached)) {
     return cached;
@@ -291,9 +371,9 @@ export const getRepositories = async (type: string = "public"): Promise<GitHubRe
 
   const username = env.USERNAME.trim();
   const baseEndpoint =
-    type === "public" && username
+    effectiveType === "public" && username
       ? `/users/${encodeURIComponent(username)}/repos?type=owner&sort=updated`
-      : `/user/repos?type=${type}&sort=updated`;
+      : `/user/repos?type=${effectiveType}&sort=updated`;
 
   const repos: GitHubRepo[] = [];
 
@@ -345,17 +425,14 @@ export const fetchFileContent = async (
   if (env.NODE_ENV === "test") {
     const fixture = getTestRepository(repoName, owner);
     if (!fixture) return null;
+    const ref = fixture.repo.default_branch ?? "main";
 
     if (alwaysProvideLink) {
-      return `https://github.com/${owner}/${repoName}/blob/main/${filePath}`;
+      return createGitHubBlobUrl(owner, repoName, ref, filePath);
     }
 
-    if (filePath === "package.json") {
-      return JSON.stringify(fixture.packageJson);
-    }
-
-    if (filePath.toLowerCase().startsWith("readme")) {
-      return fixture.readme;
+    if (filePath in fixture.files) {
+      return fixture.files[filePath];
     }
 
     return null;
@@ -373,7 +450,7 @@ export const fetchFileContent = async (
   }
 
   if (alwaysProvideLink || isImage(item) || isVideo(item) || isOtherBinary(item)) {
-    return `https://github.com/${owner}/${repoName}/blob/main/${filePath}`;
+    return createGitHubBlobUrl(owner, repoName, "main", filePath);
   }
 
   if (item.content) {
@@ -394,39 +471,85 @@ export const fetchFolderStructure = async (
   repoName: string,
   path = "",
   owner: string,
+  ref = "HEAD",
 ): Promise<JsonObject | null> => {
-  try {
-    const data = await fetchGitHubAPI(`/repos/${owner}/${repoName}/contents/${path}`);
+  if (env.NODE_ENV === "test") {
+    const fixture = getTestRepository(repoName, owner);
+    if (!fixture) return null;
 
-    if (!isValidGitHubResponse(data)) {
+    const structure = buildTestFolderStructure(fixture, owner, ref);
+    if (!path) {
+      return structure;
+    }
+
+    const segments = path.split("/").filter(Boolean);
+    let current: JsonValue = structure;
+    for (const segment of segments) {
+      if (!isRecord(current)) {
+        return null;
+      }
+      current = current[segment];
+      if (current === undefined) {
+        return null;
+      }
+    }
+
+    return isRecord(current) ? (current as JsonObject) : null;
+  }
+
+  try {
+    const data = await fetchGitHubAPI(
+      `/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(ref)}?recursive=1`
+    );
+
+    if (!isValidGitHubResponse(data) || !isRecord(data)) {
       return null;
     }
 
-    if (!isArray(data)) {
+    const treeResponse = data as GitHubTreeResponse;
+    if (!isArray(treeResponse.tree)) {
       return null;
     }
 
     const structure: JsonObject = {};
-    for (const item of data) {
-      const contentItem = item as GitHubContentItem;
-      if (contentItem.type === "dir") {
-        const subStructure = await fetchFolderStructure(repoName, contentItem.path, owner);
-        if (subStructure) {
-          structure[contentItem.name] = subStructure;
-        }
-      } else if (contentItem.type === "file") {
-        const content = await fetchFileContent(
-          repoName,
-          contentItem.path,
-          owner,
-          env.ONLY_SAVE_LINKS,
-        );
-        if (content) {
-          structure[contentItem.name] = content;
-        }
+    for (const item of treeResponse.tree) {
+      const treeItem = item as GitHubTreeItem;
+      if (treeItem.type !== "blob") {
+        continue;
+      }
+
+      assignNestedPath(
+        structure,
+        treeItem.path,
+        createGitHubBlobUrl(owner, repoName, ref, treeItem.path),
+      );
+    }
+
+    if (treeResponse.truncated) {
+      log("warn", "GitHub tree response truncated", {
+        repoName,
+        owner,
+        ref,
+      });
+    }
+
+    if (!path) {
+      return structure;
+    }
+
+    const segments = path.split("/").filter(Boolean);
+    let current: JsonValue = structure;
+    for (const segment of segments) {
+      if (!isRecord(current)) {
+        return null;
+      }
+      current = current[segment];
+      if (current === undefined) {
+        return null;
       }
     }
-    return structure;
+
+    return isRecord(current) ? (current as JsonObject) : null;
   } catch (error) {
     if (error instanceof GitHubRateLimitError) {
       throw error;
