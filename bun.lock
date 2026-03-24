@@ -9,7 +9,7 @@
         "@elysiajs/cors": "^1.4.1",
         "@elysiajs/openapi": "latest",
         "@elysiajs/static": "latest",
-        "elysia": ">=1.4.26",
+        "elysia": ">=1.4.27",
         "elysia-rate-limit": "^4.5.0",
       },
       "devDependencies": {
